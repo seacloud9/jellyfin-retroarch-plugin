@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><head><title>RetroBridge</title></head><body>
+<div id="RetroBridgePage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-textarea,emby-select">
+  <div data-role="content"><div class="content-primary">
+    <h1>RetroBridge</h1>
+    <p>Administrator prototype · NES, Game Boy, Game Boy Color · Native RetroArch</p>
+    <form id="RetroBridgeForm">
+      <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
+      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save folders</span></button>
+    </form>
+    <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button></p>
+    <p id="ScanStatus" role="status" aria-live="polite"></p>
+    <h2>Game library</h2>
+    <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
+    <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
+    <p>Use a game ID with the companion CLI. Desktop pairing and one-click play are planned.</p>
+    <ul id="GameList"></ul>
+  </div></div>
+  <script type="text/javascript">
+  (function () {
+    var pluginId = '4be0a14e-f03e-4e52-b702-3e38b8cedf17';
+    var page = document.querySelector('#RetroBridgePage');
+    var games = [];
+    function status(text) { page.querySelector('#ScanStatus').textContent = text; }
+    function render() {
+      var search = page.querySelector('#GameSearch').value.toLowerCase();
+      var platform = page.querySelector('#GamePlatform').value;
+      var list = page.querySelector('#GameList');
+      list.replaceChildren();
+      games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
+        var li = document.createElement('li');
+        var title = document.createElement('p'); title.textContent = g.Title + ' · ' + g.Platform.toUpperCase();
+        var code = document.createElement('code'); code.textContent = g.Id;
+        li.append(title, code); list.append(li);
+      });
+      if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = 'No games found. Save folders and scan to populate the library.'; list.append(empty); }
+    }
+    async function loadGames() {
+      games = await ApiClient.getJSON(ApiClient.getUrl('RetroBridge/Games')); render();
+    }
+    page.addEventListener('pageshow', async function () {
+      try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await loadGames(); }
+      catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }
+    });
+    page.querySelector('#RetroBridgeForm').addEventListener('submit', async function (event) {
+      event.preventDefault();
+      try {
+        var config = await ApiClient.getPluginConfiguration(pluginId);
+        config.GameRoots = page.querySelector('#GameRoots').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+        await ApiClient.updatePluginConfiguration(pluginId, config); status('Folders saved. Scan to update the library.');
+      } catch (_) { status('Could not save folders.'); }
+    });
+    page.querySelector('#ScanGames').addEventListener('click', async function () {
+      this.disabled = true; status('Scanning and hashing games…');
+      try {
+        var result = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Scan'), dataType: 'json' });
+        status(result.Published ? result.Count + ' games indexed.' : 'Scan was not published; previous catalog retained. ' + result.Issues.map(function (x) { return x.Path + ': ' + x.Message; }).join('; '));
+        await loadGames();
+      } catch (_) { status('Scan failed or another scan is running. Check server logs and retry.'); }
+      finally { this.disabled = false; }
+    });
+    page.querySelector('#GameSearch').addEventListener('input', render);
+    page.querySelector('#GamePlatform').addEventListener('change', render);
+  }());
+  </script>
+</div></body></html>
