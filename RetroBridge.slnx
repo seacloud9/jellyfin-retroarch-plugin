@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Jellyfin.Plugin.RetroBridge/Jellyfin.Plugin.RetroBridge.csproj" />
+    <Project Path="src/RetroBridge.Domain/RetroBridge.Domain.csproj" />
+    <Project Path="src/RetroBridge.Launcher/RetroBridge.Launcher.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RetroBridge.Tests/RetroBridge.Tests.csproj" />
+  </Folder>
+</Solution>

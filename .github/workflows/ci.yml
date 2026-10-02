@@ -1,0 +1,36 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore --locked-mode
+      - run: dotnet build -c Release --no-restore
+      - run: dotnet test -c Release --no-build --logger trx
+      - run: dotnet format --verify-no-changes --no-restore
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Companion process and transport smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: python scripts/launcher-smoke.py
+      - run: python scripts/package-plugin.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrobridge-${{ runner.os }}
+          path: |
+            artifacts/RetroBridge-0.1.0.zip
+            artifacts/RetroBridge-0.1.0.zip.sha256
+            src/RetroBridge.Launcher/bin/Release/net10.0/
