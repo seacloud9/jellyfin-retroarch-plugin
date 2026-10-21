@@ -33,5 +33,16 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override string Description => "Experimental native RetroArch game library (prototype).";
     public override Guid Id => Guid.Parse("4be0a14e-f03e-4e52-b702-3e38b8cedf17");
     public IEnumerable<PluginPageInfo> GetPages() =>
-    [new() { Name = "RetroBridge", EmbeddedResourcePath = "Jellyfin.Plugin.RetroBridge.Configuration.configPage.html" }];
+    [
+        new() { Name = "RetroBridge", EmbeddedResourcePath = "Jellyfin.Plugin.RetroBridge.Configuration.configPage.html" },
+        // Main-menu entry for players; it hands off to the standalone /RetroBridge/Play page.
+        new()
+        {
+            Name = "RetroBridgePlay",
+            DisplayName = "Retro Games",
+            EnableInMainMenu = true,
+            MenuIcon = "sports_esports",
+            EmbeddedResourcePath = "Jellyfin.Plugin.RetroBridge.Configuration.menuPage.html",
+        },
+    ];
 }

@@ -280,6 +280,7 @@ async Task<int> Pair(Uri server, string data)
     if (string.IsNullOrEmpty(result?.AccessToken)) throw new InvalidOperationException("Server did not return an access token.");
     Pairing.Save(data, new(server.AbsoluteUri, deviceId, result.AccessToken));
     Console.WriteLine($"Paired. Device ID: {deviceId}");
+    Console.WriteLine($"Play page: {new Uri(server, "RetroBridge/Play")}  (bookmark it on any phone or computer)");
     Console.WriteLine("Revoke this device at any time in Jellyfin under Dashboard → Devices.");
     return 0;
 }

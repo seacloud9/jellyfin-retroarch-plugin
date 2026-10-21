@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><title>Retro Games</title></head><body>
+<div id="RetroBridgeMenuPage" data-role="page" class="page type-interior">
+  <div data-role="content"><div class="content-primary">
+    <h1>Retro Games</h1>
+    <p>Opening the RetroBridge play page… <a id="RetroBridgePlayLink" href="#">Open it</a> if nothing happens.</p>
+  </div></div>
+  <script type="text/javascript">
+  (function () {
+    // The play page is a standalone document with its own CSP; jellyfin-web's menu entry hands off to it.
+    var page = document.querySelector('#RetroBridgeMenuPage');
+    page.addEventListener('pageshow', function () {
+      var url = ApiClient.getUrl('RetroBridge/Play');
+      page.querySelector('#RetroBridgePlayLink').href = url;
+      window.location.assign(url);
+    });
+  }());
+  </script>
+</div></body></html>

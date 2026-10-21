@@ -20,6 +20,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var server: EditText
     private lateinit var storage: Button
+    private lateinit var play: Button
     @Volatile private var pairing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,6 +37,11 @@ class MainActivity : Activity() {
             setOnClickListener { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) }
         }
         layout.addView(storage)
+        play = Button(this).apply {
+            text = "Open play page"
+            setOnClickListener { Store(this@MainActivity).pairing?.let { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.server + "RetroBridge/Play"))) } }
+        }
+        layout.addView(play)
         status = TextView(this).apply { setPadding(0, pad, 0, 0); setTextIsSelectable(true) }
         layout.addView(status)
         setContentView(layout)
@@ -51,6 +57,7 @@ class MainActivity : Activity() {
 
     private fun showState() {
         val current = Store(this).pairing
+        play.visibility = if (current == null) android.view.View.GONE else android.view.View.VISIBLE
         val retroArch = Player(this).retroArchPackage()
         status.text = buildString {
             appendLine(if (current == null) "Not paired." else "Paired with ${current.server}\nDevice: ${current.deviceId}")

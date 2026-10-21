@@ -18,7 +18,8 @@
     <h2>Game library</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
     <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
-    <p>Players open <a id="PlayLink" href="#" target="_blank" rel="noopener">the RetroBridge play page</a> after pairing the companion with Quick Connect.</p>
+    <p>Share the play page with players (it also appears in the companion after pairing). Jellyfin's main menu shows plugin pages to administrators only.</p>
+    <p><code id="PlayUrl"></code> <button is="emby-button" id="CopyPlayUrl" type="button" class="raised">Copy link</button> <a id="PlayLink" href="#" target="_blank" rel="noopener">Open</a></p>
     <ul id="GameList"></ul>
   </div></div>
   <script type="text/javascript">
@@ -65,7 +66,12 @@
       });
       if (!list.children.length) list.textContent = 'No non-administrator users exist.';
     }
-    page.querySelector('#PlayLink').href = ApiClient.getUrl('RetroBridge/Play');
+    var playUrl = new URL(ApiClient.getUrl('RetroBridge/Play'), window.location.href).href;
+    page.querySelector('#PlayLink').href = playUrl;
+    page.querySelector('#PlayUrl').textContent = playUrl;
+    page.querySelector('#CopyPlayUrl').addEventListener('click', async function () {
+      try { await navigator.clipboard.writeText(playUrl); status('Play page link copied.'); } catch (_) { status('Copy the link above manually.'); }
+    });
     page.addEventListener('pageshow', async function () {
       try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); page.querySelector('#FetchArtwork').checked = config.FetchArtwork !== false; await loadGames(); }
       catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }

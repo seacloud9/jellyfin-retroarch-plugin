@@ -8,5 +8,6 @@
     <InternalsVisibleTo Include="RetroBridge.Tests" />
     <EmbeddedResource Include="Configuration/configPage.html" />
     <EmbeddedResource Include="Configuration/playPage.html" />
+    <EmbeddedResource Include="Configuration/menuPage.html" />
   </ItemGroup>
 </Project>

@@ -362,6 +362,16 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
         server.request(method, endpoint, expected=(401,))
         server.request(method, endpoint, token=ordinary, expected=(403,))
     summary['real_authentication_boundaries'] = True
+
+    # jellyfin-web builds its main menu from this list. Jellyfin 12.1 serves it to administrators only.
+    server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=ordinary, expected=(403,))
+    menu = server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=admin)
+    entry = next((p for p in menu if p.get('Name') == 'RetroBridgePlay'), None)
+    if not entry or entry.get('DisplayName') != 'Retro Games' or entry.get('MenuIcon') != 'sports_esports':
+        raise AssertionError(f'Main-menu entry missing: {menu}')
+    if b'RetroBridge/Play' not in server.request('GET', '/web/ConfigurationPage?name=RetroBridgePlay', token=admin, raw=True):
+        raise AssertionError('Main-menu page is not served to players')
+    summary['jellyfin_main_menu_entry'] = True
     verify_pairing(server, admin, ordinary, user['Id'], game, config, config_path, summary, os_handler)
 
     config['GameRoots'] = []
