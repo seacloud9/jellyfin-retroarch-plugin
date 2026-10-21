@@ -92,6 +92,75 @@ class Server:
         return self.request('POST', '/Users/AuthenticateByName', {'Username': name, 'Pw': password})['AccessToken']
 
 
+LAUNCHER = REPO / 'src/RetroBridge.Launcher/bin/Release/net10.0/RetroBridge.Launcher.dll'
+
+
+def companion(*args, timeout=60):
+    return subprocess.run(['dotnet', str(LAUNCHER), *args], capture_output=True, text=True, timeout=timeout)
+
+
+def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary):
+    """Quick Connect pairing, ticket issue/redeem, replay/device binding, and access revocation."""
+    if os.name == 'nt':
+        summary['pairing_and_tickets'] = 'skipped on Windows (process stub is Unix-only)'
+        return
+    if not server.request('GET', '/QuickConnect/Enabled'):
+        system = server.request('GET', '/System/Configuration', token=admin)
+        system['QuickConnectAvailable'] = True
+        server.request('POST', '/System/Configuration', system, admin)
+    config['PlayerUserIds'] = [user_id]
+    server.request('POST', config_path, config, admin)
+    if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 1:
+        raise AssertionError('Allowed player cannot list games')
+    server.request('POST', '/RetroBridge/Scan', token=ordinary, expected=(403,))
+
+    with tempfile.TemporaryDirectory(prefix='retrobridge-pair-') as directory:
+        data = Path(directory) / 'data'
+        pairing = subprocess.Popen(['dotnet', str(LAUNCHER), 'pair', server.url, str(data)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            line = pairing.stdout.readline()
+            if not line.startswith('Quick Connect code: '):
+                raise AssertionError('Companion did not print a Quick Connect code: ' + pairing.stderr.read()[-300:])
+            code = line.split(': ', 1)[1].strip()
+            server.request('POST', '/QuickConnect/Authorize?code=' + code, token=ordinary)
+            output, errors = pairing.communicate(timeout=60)
+        finally:
+            if pairing.poll() is None:
+                pairing.kill()
+        if pairing.returncode:
+            raise AssertionError('Pairing failed: ' + errors.strip()[-300:])
+        stored = json.loads((data / 'pairing.json').read_text())
+        if (data / 'pairing.json').stat().st_mode & 0o077:
+            raise AssertionError('Pairing file is readable by other users')
+        device = stored['DeviceId']
+
+        # /usr/bin/true stands in for RetroArch; native emulation is covered separately.
+        stub_core = Path(directory) / 'core.so'
+        stub_core.write_bytes(b'stub')
+        def ticket(for_device=device):
+            return server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': for_device}, ordinary)['Ticket']
+        def launch(value):
+            return companion('launch', str(data), value, '/usr/bin/true', str(stub_core))
+
+        first = ticket()
+        result = launch(first)
+        if result.returncode or 'Starting save-counter' not in result.stdout:
+            raise AssertionError('Ticket launch failed: ' + result.stderr.strip()[-300:])
+        cached = data / 'cache' / (game['Id'] + '.nes')
+        if hashlib.sha256(cached.read_bytes()).hexdigest() != game['Sha256']:
+            raise AssertionError('Ticket launch did not cache verified content')
+        for name, value in [('replayed', first), ('other-device', ticket('retrobridge-not-this-device'))]:
+            rejected = launch(value)
+            if rejected.returncode != 1 or 'invalid or expired' not in rejected.stderr:
+                raise AssertionError(f'{name} ticket was not rejected')
+
+        config['PlayerUserIds'] = []
+        server.request('POST', config_path, config, admin)
+        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(403,))
+        server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(403,))
+    summary['pairing_and_tickets'] = True
+
+
 def verify_server(server, container, fixtures, summary):
     info = server.ready()
     if info['Version'] not in ('12.1', '12.1.0'):
@@ -153,6 +222,7 @@ def verify_server(server, container, fixtures, summary):
         server.request(method, endpoint, expected=(401,))
         server.request(method, endpoint, token=ordinary, expected=(403,))
     summary['real_authentication_boundaries'] = True
+    verify_pairing(server, admin, ordinary, user['Id'], game, config, config_path, summary)
 
     config['GameRoots'] = []
     server.request('POST', config_path, config, admin)

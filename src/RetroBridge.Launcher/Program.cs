@@ -1,46 +1,131 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using RetroBridge.Domain;
 
-if (args.Length != 5)
-{
-    Console.WriteLine("Usage: RetroBridge.Launcher <server-url> <game-id> <retroarch-path> <core-path> <data-directory>");
-    Console.WriteLine("Set RETROBRIDGE_TOKEN to a Jellyfin administrator USER access token. HTTPS required except loopback.");
-    return args.Length == 1 && args[0] == "--help" ? 0 : 2;
-}
+var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+var ct = cancellation.Token;
 
 try
 {
-    var server = new Uri(args[0].TrimEnd('/') + "/", UriKind.Absolute);
+    switch (args)
+    {
+        case ["pair", var serverArg, var data]:
+            return await Pair(ParseServer(serverArg), data);
+        case ["launch", var data, var ticket, var executable, var core]:
+            {
+                var pairing = Pairing.Load(data);
+                var server = ParseServer(pairing.Server);
+                using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
+                using var response = await client.PostAsJsonAsync("RetroBridge/LaunchTickets/Redeem", new { Ticket = ticket }, json, ct);
+                if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("This device is no longer paired. Run pair again.");
+                if (response.StatusCode == HttpStatusCode.NotFound) throw new InvalidOperationException("Launch ticket is invalid or expired. Start the game again.");
+                response.EnsureSuccessStatusCode();
+                var game = await response.Content.ReadFromJsonAsync<Game>(json, ct) ?? throw new InvalidOperationException("Server returned no game.");
+                return await Launch(client, server, await CurrentUser(client), game, executable, core, data);
+            }
+        // Development path: an existing user token in RETROBRIDGE_TOKEN and a game ID.
+        case [var serverArg, var gameId, var executable, var core, var data]:
+            {
+                var server = ParseServer(serverArg);
+                var token = Environment.GetEnvironmentVariable("RETROBRIDGE_TOKEN");
+                if (string.IsNullOrWhiteSpace(token)) throw new ArgumentException("Set RETROBRIDGE_TOKEN to your Jellyfin user access token.");
+                using var client = CreateClient(server, token, "retrobridge-launcher");
+                var user = await CurrentUser(client);
+                var games = await client.GetFromJsonAsync<Game[]>("RetroBridge/Games", json, ct) ?? [];
+                var game = games.SingleOrDefault(x => x.Id == gameId) ?? throw new ArgumentException("Game not found. Scan the library and copy its game ID.");
+                return await Launch(client, server, user, game, executable, core, data);
+            }
+        default:
+            Console.WriteLine("Usage:");
+            Console.WriteLine("  RetroBridge.Launcher pair <server-url> <data-directory>");
+            Console.WriteLine("  RetroBridge.Launcher launch <data-directory> <ticket> <retroarch-path> <core-path>");
+            Console.WriteLine("  RetroBridge.Launcher <server-url> <game-id> <retroarch-path> <core-path> <data-directory>  (development; RETROBRIDGE_TOKEN)");
+            Console.WriteLine("HTTPS required except loopback.");
+            return args is ["--help"] ? 0 : 2;
+    }
+}
+catch (OperationCanceledException) { Console.Error.WriteLine("Cancelled."); return 130; }
+catch (Exception ex) when (ex is ArgumentException or FormatException or IOException or HttpRequestException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or JsonException)
+{
+    Console.Error.WriteLine("Failed: " + ex.Message);
+    return 1;
+}
+
+static Uri ParseServer(string value)
+{
+    var server = new Uri(value.TrimEnd('/') + "/", UriKind.Absolute);
     if ((server.Scheme != "https" && !(server.Scheme == "http" && server.IsLoopback)) ||
         !string.IsNullOrEmpty(server.UserInfo) || !string.IsNullOrEmpty(server.Query) || !string.IsNullOrEmpty(server.Fragment))
         throw new ArgumentException("Use an HTTPS server URL (HTTP is allowed only on loopback), without credentials, query, or fragment.");
-    var token = Environment.GetEnvironmentVariable("RETROBRIDGE_TOKEN");
-    if (string.IsNullOrWhiteSpace(token)) throw new ArgumentException("Set RETROBRIDGE_TOKEN to your Jellyfin user access token.");
-    using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-    using var client = new HttpClient(handler) { BaseAddress = server, Timeout = TimeSpan.FromMinutes(10) };
-    if (token.Any(c => c == '"' || c == '\\' || char.IsControl(c))) throw new ArgumentException("RETROBRIDGE_TOKEN contains invalid characters.");
+    return server;
+}
+
+static HttpClient CreateClient(Uri server, string? token, string deviceId)
+{
+    if (token is not null && token.Any(c => c == '"' || c == '\\' || char.IsControl(c))) throw new ArgumentException("The access token contains invalid characters.");
+    var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = server, Timeout = TimeSpan.FromMinutes(10) };
     // Jellyfin 12.1 ignores X-Emby-Token; it requires the MediaBrowser Authorization scheme.
+    // Jellyfin binds access tokens to DeviceId, so pairing and later requests must use the same one.
     client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization",
-        $"MediaBrowser Client=\"RetroBridge\", Device=\"{Environment.MachineName.Replace("\"", "")}\", DeviceId=\"retrobridge-launcher\", Version=\"0.1.0\", Token=\"{token}\"");
-    using var cancellation = new CancellationTokenSource();
-    Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
-    var ct = cancellation.Token;
-    var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        $"MediaBrowser Client=\"RetroBridge\", Device=\"{new string(Environment.MachineName.Where(char.IsAsciiLetterOrDigit).ToArray())}\", DeviceId=\"{deviceId}\", Version=\"0.1.0\"" +
+        (token is null ? "" : $", Token=\"{token}\""));
+    return client;
+}
+
+async Task<Guid> CurrentUser(HttpClient client)
+{
     var user = await client.GetFromJsonAsync<UserIdentity>("Users/Me", json, ct)
         ?? throw new InvalidOperationException("Server did not return a user identity.");
     // Jellyfin serializes user IDs without dashes, which Guid JSON conversion rejects.
     if (!Guid.TryParse(user.Id, out var userId) || userId == Guid.Empty) throw new InvalidOperationException("A user access token is required; server API keys are not supported.");
-    var games = await client.GetFromJsonAsync<Game[]>("RetroBridge/Games", json, ct) ?? [];
-    var game = games.SingleOrDefault(x => x.Id == args[1]) ?? throw new ArgumentException("Game not found. Scan the library and copy its game ID.");
+    return userId;
+}
+
+// Pairs this device with a Jellyfin account through Jellyfin Quick Connect; no password is entered here.
+async Task<int> Pair(Uri server, string data)
+{
+    var deviceId = "retrobridge-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+    using var client = CreateClient(server, null, deviceId);
+    using (var enabled = await client.GetAsync("QuickConnect/Enabled", ct))
+        if (!enabled.IsSuccessStatusCode || !await enabled.Content.ReadFromJsonAsync<bool>(json, ct))
+            throw new InvalidOperationException("Quick Connect is disabled on this server. An administrator can enable it under Dashboard → General.");
+    using var initiated = await client.PostAsync("QuickConnect/Initiate", null, ct);
+    initiated.EnsureSuccessStatusCode();
+    var request = await initiated.Content.ReadFromJsonAsync<QuickConnectState>(json, ct) ?? throw new InvalidOperationException("Quick Connect did not start.");
+    Console.WriteLine($"Quick Connect code: {request.Code}");
+    Console.WriteLine("In Jellyfin, open your profile → Quick Connect and enter this code. Waiting up to 5 minutes…");
+    var deadline = DateTime.UtcNow.AddMinutes(5);
+    while (true)
+    {
+        if (DateTime.UtcNow > deadline) throw new InvalidOperationException("Quick Connect timed out. Run pair again.");
+        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        // Jellyfin's Quick Connect API takes the pairing secret as a query parameter.
+        var state = await client.GetFromJsonAsync<QuickConnectState>("QuickConnect/Connect?secret=" + Uri.EscapeDataString(request.Secret), json, ct);
+        if (state?.Authenticated == true) break;
+    }
+    using var authenticated = await client.PostAsJsonAsync("Users/AuthenticateWithQuickConnect", new { Secret = request.Secret }, json, ct);
+    authenticated.EnsureSuccessStatusCode();
+    var result = await authenticated.Content.ReadFromJsonAsync<AuthenticationResult>(json, ct);
+    if (string.IsNullOrEmpty(result?.AccessToken)) throw new InvalidOperationException("Server did not return an access token.");
+    Pairing.Save(data, new(server.AbsoluteUri, deviceId, result.AccessToken));
+    Console.WriteLine($"Paired. Device ID: {deviceId}");
+    Console.WriteLine("Revoke this device at any time in Jellyfin under Dashboard → Devices.");
+    return 0;
+}
+
+async Task<int> Launch(HttpClient client, Uri server, Guid userId, Game game, string executable, string core, string data)
+{
     if (string.IsNullOrEmpty(game.Extension) || Platforms.FromExtension(game.Extension) != game.Platform || game.Size < 0 || game.Size > 64 * 1024 * 1024 ||
         game.Id != game.Platform + "-" + game.Sha256)
         throw new InvalidOperationException("Unsupported or invalid game metadata (prototype limit: 64 MiB).");
-    var saveDirectory = LaunchPlan.SaveDirectory(args[4], server.AbsoluteUri, userId, game);
+    var saveDirectory = LaunchPlan.SaveDirectory(data, server.AbsoluteUri, userId, game);
     Directory.CreateDirectory(saveDirectory);
-    var cache = Path.Combine(Path.GetFullPath(args[4]), "cache");
+    var cache = Path.Combine(Path.GetFullPath(data), "cache");
     Directory.CreateDirectory(cache);
     var content = Path.Combine(cache, game.Id + game.Extension);
     // Serialize launches for a game across companion processes to protect its saves and cache.
@@ -72,19 +157,13 @@ try
     }
     var config = Path.Combine(saveDirectory, "retrobridge.cfg");
     await File.WriteAllTextAsync(config, LaunchPlan.Configuration(saveDirectory), ct);
-    var plan = LaunchPlan.Create(Path.GetFullPath(args[2]), Path.GetFullPath(args[3]), content, config);
+    var plan = LaunchPlan.Create(Path.GetFullPath(executable), Path.GetFullPath(core), content, config);
     Console.WriteLine($"Starting {game.Title}. Saves: {saveDirectory}");
     using var process = Process.Start(plan) ?? throw new InvalidOperationException("RetroArch could not be started.");
     // Keep the game lock until RetroArch exits, even if the CLI receives Ctrl+C.
     await process.WaitForExitAsync();
     Console.WriteLine($"RetroArch exited with code {process.ExitCode}.");
     return process.ExitCode;
-}
-catch (OperationCanceledException) { Console.Error.WriteLine("Launch cancelled."); return 130; }
-catch (Exception ex) when (ex is ArgumentException or FormatException or IOException or HttpRequestException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or JsonException)
-{
-    Console.Error.WriteLine("Launch failed: " + ex.Message);
-    return 1;
 }
 
 static async Task<bool> Verified(string path, Game game, CancellationToken ct)
@@ -96,3 +175,33 @@ static async Task<bool> Verified(string path, Game game, CancellationToken ct)
 }
 
 internal sealed record UserIdentity(string? Id);
+internal sealed record QuickConnectState(string Secret, string Code, bool Authenticated);
+internal sealed record AuthenticationResult(string? AccessToken);
+
+// The device's access token, stored owner-only (Unix) in the data directory.
+internal sealed record Pairing(string Server, string DeviceId, string Token)
+{
+    private static string PathIn(string data) => Path.Combine(Path.GetFullPath(data), "pairing.json");
+
+    public static void Save(string data, Pairing pairing)
+    {
+        Directory.CreateDirectory(Path.GetFullPath(data));
+        var path = PathIn(data);
+        var temporary = path + ".tmp";
+        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using (var stream = new FileStream(temporary, options)) JsonSerializer.Serialize(stream, pairing);
+        File.Move(temporary, path, true);
+    }
+
+    public static Pairing Load(string data)
+    {
+        var path = PathIn(data);
+        if (!File.Exists(path)) throw new InvalidOperationException("This device is not paired. Run: RetroBridge.Launcher pair <server-url> <data-directory>");
+        using var stream = File.OpenRead(path);
+        var pairing = JsonSerializer.Deserialize<Pairing>(stream);
+        if (pairing is null || string.IsNullOrEmpty(pairing.Token) || !pairing.DeviceId.StartsWith("retrobridge-", StringComparison.Ordinal))
+            throw new InvalidOperationException("Pairing file is invalid. Run pair again.");
+        return pairing;
+    }
+}

@@ -23,29 +23,39 @@ The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/
 
 ## Install the prototype
 
-1. Use a **test Jellyfin 12.1.0 server**. Loading in a real server has not yet been verified in this repository.
+1. Use a **test Jellyfin 12.1.0 server**. Loading is verified in Docker (see the [verification record](docs/verification.md)); this is still a prototype.
 2. Stop Jellyfin. Create a `RetroBridge` directory under its configured plugins directory.
 3. Extract **both DLLs** from the archive into that directory, then restart Jellyfin.
 4. As an administrator, open Dashboard → Plugins → RetroBridge.
-5. Enter absolute game-folder paths **as seen by the Jellyfin server**, save, then scan. Container paths must refer to mounted folders.
-6. Search/filter games and copy the ID of a game you own or a redistributable homebrew game.
+5. Enter absolute game-folder paths **as seen by the Jellyfin server**. Tick the non-administrator users who may play, save, then scan. Container paths must refer to mounted folders.
+6. Search and filter games. Use only games you own or redistributable homebrew.
 
-All endpoints require Jellyfin's `RequiresElevation` policy. Ordinary user access is intentionally unavailable until explicit library permissions are implemented. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
+Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Access applies to the whole library; per-game permissions are not implemented. Removing a player takes effect immediately. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
 Scans rehash supported files and publish a new in-memory catalog only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Rescan after changing game files. Large libraries and incremental scans are later work.
 
 ## Run the companion
 
-Install RetroArch and a suitable core separately. Use a Jellyfin **administrator user access token** in `RETROBRIDGE_TOKEN`; server-wide API keys do not provide the user identity required for saves. Keep the token in your local environment; do not place it in command arguments, URLs, or checked-in files. Interactive login/device pairing is not implemented yet.
+Install RetroArch and a suitable core separately.
+
+**1. Pair once per device** using Jellyfin Quick Connect. The server must have Quick Connect enabled (Dashboard → General).
 
 ```sh
-dotnet run --project src/RetroBridge.Launcher -c Release -- \
-  'https://jellyfin.example/' \
-  'nes-COPY_THE_ACTUAL_CHECKSUM_FROM_THE_DASHBOARD' \
-  '/Applications/RetroArch.app/Contents/MacOS/RetroArch' \
-  '/absolute/path/to/nestopia_libretro.dylib' \
-  '/absolute/path/to/RetroBridge-data'
+dotnet run --project src/RetroBridge.Launcher -c Release -- pair 'https://jellyfin.example/' '/absolute/path/to/RetroBridge-data'
 ```
+
+The companion prints a code. Sign in to Jellyfin as the player, open your profile → Quick Connect, and enter the code. The companion stores a device-bound access token in `RetroBridge-data/pairing.json` (owner-only permissions on macOS/Linux) and prints its device ID. Revoke it under Dashboard → Devices. No password is entered in the companion.
+
+**2. Launch with a ticket.** An allowed player requests a ticket for a game and their paired device ID: `POST /RetroBridge/Games/{id}/LaunchTicket` with `{"DeviceId": "retrobridge-..."}`. There is no player-facing button yet. Then:
+
+```sh
+dotnet run --project src/RetroBridge.Launcher -c Release -- launch '/absolute/path/to/RetroBridge-data' 'TICKET' \
+  '/Applications/RetroArch.app/Contents/MacOS/RetroArch' '/absolute/path/to/nestopia_libretro.dylib'
+```
+
+Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket. Tickets are held in server memory, so a Jellyfin restart invalidates outstanding tickets.
+
+For development, the original form still works with an existing user token in `RETROBRIDGE_TOKEN` (never in arguments): `<server-url> <game-id> <retroarch> <core> <data-dir>`.
 
 Replace the example paths with your executable/core paths. The launcher requires HTTPS except for loopback development servers and refuses redirects. It supports Jellyfin base paths, validates cached/downloaded content against SHA-256, limits content to 64 MiB, cleans up interrupted download files, and uses structured process arguments without a shell. Only the locally supplied executable and core paths are used.
 
@@ -53,13 +63,15 @@ Saves and states live under `RetroBridge-data/saves/<server hash>/<user ID>/<pla
 
 ## API
 
-Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` header; Jellyfin 12.1 rejects `X-Emby-Token` alone). No credentials belong in query strings.
+Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` header; Jellyfin 12.1 rejects `X-Emby-Token` alone). No credentials belong in query strings. (Exception: Jellyfin's own Quick Connect API polls with its pairing secret in the query string.)
 
-| Method | Route | Behavior |
-|---|---|---|
-| GET | `/RetroBridge/Games?search=...&platform=nes` | Catalog metadata without server paths |
-| POST | `/RetroBridge/Scan` | Scan saved folders; returns count, publication status, and issues; 409 if busy |
-| GET | `/RetroBridge/Games/{id}/Content` | Download an indexed file from a currently configured root |
+| Method | Route | Access | Behavior |
+|---|---|---|---|
+| GET | `/RetroBridge/Games?search=...&platform=nes` | Player | Catalog metadata without server paths |
+| POST | `/RetroBridge/Scan` | Administrator | Scan saved folders; returns count, publication status, and issues; 409 if busy |
+| POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; returns a single-use ticket and its expiry |
+| POST | `/RetroBridge/LaunchTickets/Redeem` | Player, from the bound device | Body `{"Ticket"}`; returns the game; 404 for any invalid, expired, replayed, or foreign ticket |
+| GET | `/RetroBridge/Games/{id}/Content` | Player | Download an indexed file from a currently configured root |
 
 Scan errors include paths for administrator diagnostics. Content changes after scanning are rejected by the companion's checksum check; rescan to update the catalog.
 
@@ -74,7 +86,7 @@ Still required before a usable beta:
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
 - Native RetroArch save/restart tests on Windows.
 - Incremental/background scans, metadata/artwork editing.
-- Per-user game access, device pairing, short-lived single-use launch tickets, and one-click play.
+- Per-game permissions, a player-facing game page, a `retrobridge://` link handler, and one-click play.
 - Dedicated game UI, installers, repository manifest, and release verification.
 
 See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. The same test passes on Linux in Docker ([setup and teardown](docs/linux-native-docker.md)). Windows native runs remain open.

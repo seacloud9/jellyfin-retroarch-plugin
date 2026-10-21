@@ -3,17 +3,18 @@
 <div id="RetroBridgePage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-textarea,emby-select">
   <div data-role="content"><div class="content-primary">
     <h1>RetroBridge</h1>
-    <p>Administrator prototype · NES, Game Boy, Game Boy Color · Native RetroArch</p>
+    <p>Prototype · NES, Game Boy, Game Boy Color · Native RetroArch</p>
     <form id="RetroBridgeForm">
       <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
-      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save folders</span></button>
+      <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
+      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
     </form>
     <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button></p>
     <p id="ScanStatus" role="status" aria-live="polite"></p>
     <h2>Game library</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
-    <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
-    <p>Use a game ID with the companion CLI. Desktop pairing and one-click play are planned.</p>
+    <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
+    <p>Players pair the companion with Quick Connect, then launch with a single-use ticket. One-click play is planned.</p>
     <ul id="GameList"></ul>
   </div></div>
   <script type="text/javascript">
@@ -38,8 +39,19 @@
     async function loadGames() {
       games = await ApiClient.getJSON(ApiClient.getUrl('RetroBridge/Games')); render();
     }
+    async function renderPlayers(selected) {
+      var users = await ApiClient.getUsers();
+      var list = page.querySelector('#PlayerList');
+      list.replaceChildren();
+      users.filter(function (u) { return !u.Policy.IsAdministrator; }).forEach(function (u) {
+        var label = document.createElement('label');
+        var box = document.createElement('input'); box.type = 'checkbox'; box.value = u.Id; box.checked = selected.includes(u.Id);
+        label.append(box, ' ' + u.Name); list.append(label, document.createElement('br'));
+      });
+      if (!list.children.length) list.textContent = 'No non-administrator users exist.';
+    }
     page.addEventListener('pageshow', async function () {
-      try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await loadGames(); }
+      try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); await loadGames(); }
       catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }
     });
     page.querySelector('#RetroBridgeForm').addEventListener('submit', async function (event) {
@@ -47,8 +59,9 @@
       try {
         var config = await ApiClient.getPluginConfiguration(pluginId);
         config.GameRoots = page.querySelector('#GameRoots').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
-        await ApiClient.updatePluginConfiguration(pluginId, config); status('Folders saved. Scan to update the library.');
-      } catch (_) { status('Could not save folders.'); }
+        config.PlayerUserIds = Array.from(page.querySelectorAll('#PlayerList input:checked')).map(function (x) { return x.value; });
+        await ApiClient.updatePluginConfiguration(pluginId, config); status('Settings saved. Scan to update the library.');
+      } catch (_) { status('Could not save settings.'); }
     });
     page.querySelector('#ScanGames').addEventListener('click', async function () {
       this.disabled = true; status('Scanning and hashing games…');

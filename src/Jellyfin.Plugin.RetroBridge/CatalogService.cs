@@ -8,9 +8,14 @@ namespace Jellyfin.Plugin.RetroBridge;
 
 public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
-    public void RegisterServices(IServiceCollection services, IServerApplicationHost host) => services.AddSingleton(provider =>
-        // DataPath outlives plugin directory replacement during upgrades.
-        new CatalogService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "catalog.json")));
+    public void RegisterServices(IServiceCollection services, IServerApplicationHost host)
+    {
+        services.AddSingleton(provider =>
+            // DataPath outlives plugin directory replacement during upgrades.
+            new CatalogService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "catalog.json")));
+        services.AddSingleton<LaunchTickets>();
+        services.AddSingleton<Func<PluginConfiguration>>(() => Plugin.Instance!.Configuration);
+    }
 }
 
 public sealed class CatalogService
