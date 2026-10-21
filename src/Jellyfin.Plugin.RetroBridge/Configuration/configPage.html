@@ -43,9 +43,29 @@
         var limited = (config && config.RestrictedGames || []).filter(function (r) { return r.GameId === g.Id; })[0];
         access.textContent = limited ? 'Access: ' + limited.PlayerUserIds.length + ' player(s)' : 'Access: all players';
         access.addEventListener('click', function () { editAccess(g, li, limited); });
-        li.append(title, code, edit, access); list.append(li);
+        var upload = document.createElement('button'); upload.type = 'button'; upload.className = 'raised'; upload.setAttribute('is', 'emby-button'); upload.textContent = 'Upload art';
+        var file = document.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg'; file.hidden = true;
+        upload.addEventListener('click', function () { file.click(); });
+        file.addEventListener('change', function () { if (file.files[0]) uploadArt(g, file.files[0]); });
+        var removeArt = document.createElement('button'); removeArt.type = 'button'; removeArt.className = 'raised'; removeArt.setAttribute('is', 'emby-button'); removeArt.textContent = 'Remove uploaded art';
+        removeArt.addEventListener('click', function () { artRequest(g, 'DELETE', null, 'Uploaded art removed.', 'This game has no uploaded art.'); });
+        li.append(title, code, edit, access, upload, file, removeArt); list.append(li);
       });
       if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = 'No games found. Save folders and scan to populate the library.'; list.append(empty); }
+    }
+    // Uploads send raw bytes, so use fetch with the session token instead of ApiClient.ajax.
+    async function artRequest(game, method, body, done, failed) {
+      try {
+        var response = await fetch(ApiClient.getUrl('RetroBridge/Games/' + encodeURIComponent(game.Id) + '/Art'), {
+          method: method, body: body, headers: { Authorization: 'MediaBrowser Token="' + ApiClient.accessToken() + '"' }
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        status(done); await loadGames();
+      } catch (_) { status(failed); }
+    }
+    function uploadArt(game, file) {
+      if (file.size > 4 * 1024 * 1024) { status('Images must be 4 MiB or smaller.'); return; }
+      artRequest(game, 'PUT', file, 'Artwork uploaded for ' + game.Title + '.', 'Upload failed: use a PNG or JPEG up to 4 MiB.');
     }
     // Per-game access: no boxes ticked means every player.
     function editAccess(game, item, limited) {

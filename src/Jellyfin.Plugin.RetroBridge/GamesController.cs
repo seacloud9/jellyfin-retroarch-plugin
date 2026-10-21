@@ -1,5 +1,6 @@
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RetroBridge.Domain;
 
@@ -67,10 +68,31 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public IActionResult Art(string id)
     {
         if (!CanPlay()) return Forbid();
-        if (Visible().All(x => x.Game.Id != id) || artwork.Open(id) is not { } image) return NotFound();
-        Response.Headers.CacheControl = "private, max-age=86400";
-        return File(image, "image/png");
+        if (Visible().All(x => x.Game.Id != id) || artwork.Open(id) is not { } art) return NotFound();
+        // Short cache: administrators can replace art at any time.
+        Response.Headers.CacheControl = "private, max-age=300";
+        return File(art.Image, art.ContentType);
     }
+
+    // Raw PNG or JPEG body. Replaces fetched art; fetches never overwrite an upload.
+    [HttpPut("Games/{id}/Art")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [RequestSizeLimit(ArtworkService.MaxImageBytes + 1024)]
+    public async Task<IActionResult> UploadArt(string id, CancellationToken cancellationToken)
+    {
+        if (catalog.Games.All(x => x.Game.Id != id)) return NotFound();
+        try { await artwork.SaveCustomAsync(id, Request.Body, cancellationToken); }
+        catch (InvalidDataException ex) { return BadRequest(new { ex.Message }); }
+        // Kestrel enforces RequestSizeLimit while the body is read.
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        { return StatusCode(StatusCodes.Status413PayloadTooLarge, new { Message = "Images must be 4 MiB or smaller." }); }
+        return NoContent();
+    }
+
+    [HttpDelete("Games/{id}/Art")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public IActionResult RemoveArt(string id) =>
+        catalog.Games.Any(x => x.Game.Id == id) && artwork.RemoveCustom(id) ? NoContent() : NotFound();
 
     // Fetches missing art now (202), retrying recent misses. ?wait=true returns the counts.
     [HttpPost("Artwork")]

@@ -32,11 +32,62 @@ public sealed partial class ArtworkService
     }
 
     internal string PathFor(string gameId) => Path.Combine(_directory, gameId + ".png");
+    private string CustomPathFor(string gameId) => Path.Combine(_directory, "custom", gameId);
+    private static readonly byte[] JpegSignature = [0xFF, 0xD8, 0xFF];
     private string MissesPath => Path.Combine(_directory, "misses.json");
 
-    public bool Has(string gameId) => File.Exists(PathFor(gameId));
+    public bool Has(string gameId) => File.Exists(CustomPathFor(gameId)) || File.Exists(PathFor(gameId));
 
-    public Stream? Open(string gameId) => Has(gameId) ? File.OpenRead(PathFor(gameId)) : null;
+    // An administrator's upload takes precedence over fetched art.
+    public (Stream Image, string ContentType)? Open(string gameId)
+    {
+        if (File.Exists(CustomPathFor(gameId)))
+        {
+            var stream = File.OpenRead(CustomPathFor(gameId));
+            var header = new byte[3];
+            stream.ReadExactly(header);
+            stream.Position = 0;
+            return (stream, header.SequenceEqual(JpegSignature) ? "image/jpeg" : "image/png");
+        }
+        return File.Exists(PathFor(gameId)) ? (File.OpenRead(PathFor(gameId)), "image/png") : null;
+    }
+
+    // Accepts PNG or JPEG up to MaxImageBytes, identified by signature rather than the client's content type.
+    public async Task SaveCustomAsync(string gameId, Stream input, CancellationToken cancellationToken)
+    {
+        var destination = CustomPathFor(gameId);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write))
+            {
+                var buffer = new byte[81920];
+                long total = 0;
+                int count;
+                while ((count = await input.ReadAsync(buffer, cancellationToken)) > 0)
+                {
+                    total += count;
+                    if (total > MaxImageBytes) throw new InvalidDataException("Images must be 4 MiB or smaller.");
+                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                }
+            }
+            var header = new byte[PngSignature.Length];
+            int read;
+            await using (var check = File.OpenRead(temporary)) read = await check.ReadAtLeastAsync(header, header.Length, false, cancellationToken);
+            if (!(read == header.Length && header.SequenceEqual(PngSignature)) && !(read >= 3 && header.AsSpan(0, 3).SequenceEqual(JpegSignature)))
+                throw new InvalidDataException("Upload a PNG or JPEG image.");
+            File.Move(temporary, destination, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    public bool RemoveCustom(string gameId)
+    {
+        if (!File.Exists(CustomPathFor(gameId))) return false;
+        File.Delete(CustomPathFor(gameId));
+        return true;
+    }
 
     // Fetches art for games without it. Recent misses are skipped unless retry is set. Returns null if a fetch is already running.
     public async Task<ArtworkResult?> FetchMissingAsync(IReadOnlyList<IndexedGame> games, bool retry, CancellationToken cancellationToken)

@@ -356,6 +356,50 @@ public sealed class ApiTests : IDisposable
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task AdministratorsCanUploadAndRemoveArt()
+    {
+        var (root, game) = await ScanFixture();
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 7], jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 1];
+        try
+        {
+            HttpRequestMessage Upload(byte[] body, string role = "Administrator")
+            {
+                var r = As(HttpMethod.Put, $"/RetroBridge/Games/{game.Id}/Art", role, Player, "d");
+                r.Content = new ByteArrayContent(body);
+                return r;
+            }
+            async Task<(HttpStatusCode, string?, byte[])> Get()
+            {
+                using var r = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Player, "d"));
+                return (r.StatusCode, r.Content.Headers.ContentType?.MediaType, await r.Content.ReadAsByteArrayAsync());
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(_artwork.PathFor(game.Id))!);
+            await File.WriteAllBytesAsync(_artwork.PathFor(game.Id), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1]);
+
+            using (var denied = await _client.SendAsync(Upload(png, "User"))) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+            foreach (var bad in new[] { "GIF89a"u8.ToArray(), "<svg/>"u8.ToArray(), [.. png, .. new byte[ArtworkService.MaxImageBytes]] })
+                using (var rejected = await _client.SendAsync(Upload(bad))) Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+            using (var ok = await _client.SendAsync(Upload(png))) Assert.Equal(HttpStatusCode.NoContent, ok.StatusCode);
+            var pngResult = await Get();
+            Assert.Equal((HttpStatusCode.OK, "image/png"), (pngResult.Item1, pngResult.Item2));
+            Assert.Equal(png, pngResult.Item3);
+            using (var ok = await _client.SendAsync(Upload(jpeg))) Assert.Equal(HttpStatusCode.NoContent, ok.StatusCode);
+            var jpegResult = await Get();
+            Assert.Equal((HttpStatusCode.OK, "image/jpeg"), (jpegResult.Item1, jpegResult.Item2));
+            Assert.Equal(jpeg, jpegResult.Item3);
+            Assert.Equal(1, (await _artwork.FetchMissingAsync(_catalog.Games, false, default))!.Cached);
+
+            using (var removed = await _client.SendAsync(As(HttpMethod.Delete, $"/RetroBridge/Games/{game.Id}/Art", "Administrator", Player, "d"))) Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+            var (status, type, bytes) = await Get();
+            Assert.Equal((HttpStatusCode.OK, "image/png", (byte)1), (status, type, bytes[^1]));
+            using (var gone = await _client.SendAsync(As(HttpMethod.Delete, $"/RetroBridge/Games/{game.Id}/Art", "Administrator", Player, "d"))) Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class TestDevices : IPairedDevices
     {
         public IEnumerable<PairedDevice> ForUser(Guid user) =>

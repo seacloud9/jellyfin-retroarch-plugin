@@ -12,6 +12,7 @@ import secrets
 import sys
 import tempfile
 import time
+import urllib.error
 import uuid
 import zipfile
 
@@ -82,6 +83,29 @@ def main():
             server.request('GET', '/RetroBridge/Games/' + counter['Id'] + '/Art', token=player, expected=(404,))
             server.request('GET', '/RetroBridge/Games/' + mario['Id'] + '/Art', expected=(401,))
             summary.update(fetched_from='thumbnails.libretro.com', image_bytes=len(image), unmatched_game_has_no_art=True)
+
+            # Admin upload for the unmatched homebrew game: JPEG accepted, wrong types and players refused, removable.
+            import urllib.request
+            def put(body, token, expected):
+                request = urllib.request.Request(server.url + '/RetroBridge/Games/' + counter['Id'] + '/Art', data=body, method='PUT',
+                                                 headers={'Authorization': server.client + f', Token="{token}"', 'Content-Type': 'application/octet-stream'})
+                try:
+                    status = urllib.request.urlopen(request, timeout=30).status
+                except urllib.error.HTTPError as error:
+                    status = error.code
+                if status not in expected:
+                    raise AssertionError(f'Upload returned {status}, expected {expected}')
+            jpeg = b'\xff\xd8\xff\xe0' + secrets.token_bytes(2000)
+            put(jpeg, player, (403,))
+            put(b'GIF89a' + bytes(100), admin, (400,))
+            put(PNG + bytes(5 * 1024 * 1024), admin, (400, 413))
+            put(jpeg, admin, (204,))
+            served = server.request('GET', '/RetroBridge/Games/' + counter['Id'] + '/Art', token=player, raw=True)
+            if served != jpeg or not next(g for g in server.request('GET', '/RetroBridge/Games', token=player) if g['Id'] == counter['Id'])['HasArt']:
+                raise AssertionError('Uploaded art not served')
+            server.request('DELETE', '/RetroBridge/Games/' + counter['Id'] + '/Art', token=admin)
+            server.request('GET', '/RetroBridge/Games/' + counter['Id'] + '/Art', token=player, expected=(404,))
+            summary['admin_upload'] = True
 
             config['FetchArtwork'] = False
             server.request('POST', config_path, config, admin)
