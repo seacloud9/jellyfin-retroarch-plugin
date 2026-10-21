@@ -59,6 +59,6 @@ MediaProvider's `Database update failed while renaming …srm.tmp` warning appea
 
 ## Suggested next steps
 
-1. Test on a real Android phone (Google Play RetroArch is `com.retroarch`).
+1. **Pending:** test on a real Android phone. The checklist is in [manual-smoke.md](manual-smoke.md#pending-real-android-phone-next).
 2. Detect installed cores via RetroArch's `QUERY_INSTALLED_CORES` broadcast instead of assuming names.
 3. For iOS, prototype in-browser emulation separately.
