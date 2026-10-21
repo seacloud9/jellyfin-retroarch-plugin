@@ -14,6 +14,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             // DataPath outlives plugin directory replacement during upgrades.
             new CatalogService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "catalog.json")));
         services.AddSingleton<LaunchTickets>();
+        services.AddSingleton<IPairedDevices, JellyfinPairedDevices>();
         services.AddSingleton<Func<PluginConfiguration>>(() => Plugin.Instance!.Configuration);
     }
 }

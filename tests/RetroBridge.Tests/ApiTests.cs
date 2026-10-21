@@ -32,6 +32,7 @@ public sealed class ApiTests : IDisposable
         {
             services.AddSingleton(_catalog);
             services.AddSingleton(new LaunchTickets(_time));
+            services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("test", _ => { });
             services.AddAuthorization(options => options.AddPolicy(Policies.RequiresElevation, policy => policy.RequireAuthenticatedUser().RequireRole("Administrator")));
@@ -162,6 +163,35 @@ public sealed class ApiTests : IDisposable
             Assert.Equal(HttpStatusCode.Forbidden, revoked.StatusCode);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task PlayersSeeOnlyTheirOwnPairedDevices()
+    {
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        using var response = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Devices", "User", Player, "browser"));
+        var json = await response.Content.ReadAsStringAsync();
+        Assert.Contains("retrobridge-mine", json);
+        Assert.DoesNotContain("retrobridge-theirs", json);
+        Assert.DoesNotContain("Token", json);
+        using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Devices", "User", Guid.NewGuid(), "browser"));
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [Fact]
+    public async Task PlayPageIsStaticAndLockedDown()
+    {
+        using var response = await _client.GetAsync("/RetroBridge/Play");
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("default-src 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Contains("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Contains("retrobridge://launch?ticket=", await response.Content.ReadAsStringAsync());
+    }
+
+    private sealed class TestDevices : IPairedDevices
+    {
+        public IEnumerable<PairedDevice> ForUser(Guid user) =>
+            user == Player ? [new("retrobridge-mine", "Laptop", null)] : [new("retrobridge-theirs", "Other", null)];
     }
 
     public void Dispose() { _client.Dispose(); _host.Dispose(); }

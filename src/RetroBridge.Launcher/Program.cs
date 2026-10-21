@@ -14,20 +14,46 @@ try
 {
     switch (args)
     {
-        case ["pair", var serverArg, var data]:
-            return await Pair(ParseServer(serverArg), data);
-        case ["launch", var data, var ticket, var executable, var core]:
+        case ["pair", var serverArg, .. var rest]:
+            return await Pair(ParseServer(serverArg), DataDirectory(rest is [var d] ? d : Option(rest, "--data")));
+        case ["configure", .. var rest]:
             {
-                var pairing = Pairing.Load(data);
-                var server = ParseServer(pairing.Server);
-                using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
-                using var response = await client.PostAsJsonAsync("RetroBridge/LaunchTickets/Redeem", new { Ticket = ticket }, json, ct);
-                if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("This device is no longer paired. Run pair again.");
-                if (response.StatusCode == HttpStatusCode.NotFound) throw new InvalidOperationException("Launch ticket is invalid or expired. Start the game again.");
-                response.EnsureSuccessStatusCode();
-                var game = await response.Content.ReadFromJsonAsync<Game>(json, ct) ?? throw new InvalidOperationException("Server returned no game.");
-                return await Launch(client, server, await CurrentUser(client), game, executable, core, data);
+                var data = DataDirectory(Option(rest, "--data"));
+                var cores = Options(rest, "--core").Select(x => x.Split('=', 2)).ToDictionary(
+                    x => x.Length == 2 && x[0] is "nes" or "gb" or "gbc" ? x[0] : throw new ArgumentException("Use --core <nes|gb|gbc>=<absolute core path>."), x => x[1]);
+                LocalSettings.Save(data, new(Option(rest, "--retroarch") ?? throw new ArgumentException("--retroarch is required."), cores));
+                Console.WriteLine($"Saved launch settings in {data}.");
+                return 0;
             }
+        // Invoked by the OS link handler. There is no console, so output goes to a log in the data directory.
+        case ["open", var link, .. var rest]:
+            {
+                var data = DataDirectory(Option(rest, "--data"));
+                var ticket = LaunchLink.ParseTicket(link) ?? throw new ArgumentException("Not a valid RetroBridge launch link.");
+                Directory.CreateDirectory(data);
+                var logPath = Path.Combine(data, "launcher.log");
+                if (File.Exists(logPath) && new FileInfo(logPath).Length > 1024 * 1024) File.Delete(logPath);
+                // Not disposed here: the error handler below must still be able to write to it.
+                var log = new StreamWriter(logPath, true) { AutoFlush = true };
+                Console.SetOut(log); Console.SetError(log);
+                Console.WriteLine($"[{DateTimeOffset.Now:u}] Opening launch link.");
+                var settings = LocalSettings.Load(data);
+                return await Redeem(data, ticket, game => (settings.RetroArch,
+                    settings.Cores.GetValueOrDefault(game.Platform) ?? throw new InvalidOperationException($"No core is configured for {game.Platform}. Run configure --core {game.Platform}=<path>.")));
+            }
+        case ["launch", var data, var ticket, var executable, var core]:
+            return await Redeem(data, ticket, _ => (executable, core));
+        case ["register", .. var rest]:
+            {
+                var data = DataDirectory(Option(rest, "--data"));
+                LocalSettings.Load(data);
+                Pairing.Load(data);
+                Console.WriteLine(LinkHandler.Register(data));
+                return 0;
+            }
+        case ["unregister"]:
+            Console.WriteLine(LinkHandler.Unregister());
+            return 0;
         // Development path: an existing user token in RETROBRIDGE_TOKEN and a game ID.
         case [var serverArg, var gameId, var executable, var core, var data]:
             {
@@ -42,8 +68,13 @@ try
             }
         default:
             Console.WriteLine("Usage:");
-            Console.WriteLine("  RetroBridge.Launcher pair <server-url> <data-directory>");
+            Console.WriteLine("  RetroBridge.Launcher pair <server-url> [--data <dir>]");
+            Console.WriteLine("  RetroBridge.Launcher configure --retroarch <path> --core nes=<path> [--core gb=<path>] [--core gbc=<path>] [--data <dir>]");
+            Console.WriteLine("  RetroBridge.Launcher register [--data <dir>]      (handle retrobridge:// links from the play page)");
+            Console.WriteLine("  RetroBridge.Launcher unregister");
+            Console.WriteLine("  RetroBridge.Launcher open <retrobridge://launch?ticket=...> [--data <dir>]");
             Console.WriteLine("  RetroBridge.Launcher launch <data-directory> <ticket> <retroarch-path> <core-path>");
+            Console.WriteLine($"Default data directory: {DataDirectory(null)}");
             Console.WriteLine("  RetroBridge.Launcher <server-url> <game-id> <retroarch-path> <core-path> <data-directory>  (development; RETROBRIDGE_TOKEN)");
             Console.WriteLine("HTTPS required except loopback.");
             return args is ["--help"] ? 0 : 2;
@@ -54,6 +85,37 @@ catch (Exception ex) when (ex is ArgumentException or FormatException or IOExcep
 {
     Console.Error.WriteLine("Failed: " + ex.Message);
     return 1;
+}
+
+static string? Option(string[] args, string name) => Options(args, name).LastOrDefault();
+
+static IEnumerable<string> Options(string[] args, string name)
+{
+    for (var i = 0; i < args.Length; i++)
+        if (args[i] == name) yield return i + 1 < args.Length ? args[++i] : throw new ArgumentException($"{name} needs a value.");
+        else if (args[i].StartsWith("--", StringComparison.Ordinal) && args[i] is not ("--data" or "--core" or "--retroarch")) throw new ArgumentException($"Unknown option {args[i]}.");
+}
+
+static string DataDirectory(string? value)
+{
+    if (value is not null) return Path.GetFullPath(value);
+    var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify);
+    if (string.IsNullOrEmpty(root)) throw new InvalidOperationException("No per-user data folder is available; pass --data <dir>.");
+    return Path.Combine(root, "RetroBridge");
+}
+
+async Task<int> Redeem(string data, string ticket, Func<Game, (string Executable, string Core)> resolve)
+{
+    var pairing = Pairing.Load(data);
+    var server = ParseServer(pairing.Server);
+    using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
+    using var response = await client.PostAsJsonAsync("RetroBridge/LaunchTickets/Redeem", new { Ticket = ticket }, json, ct);
+    if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("This device is no longer paired. Run pair again.");
+    if (response.StatusCode == HttpStatusCode.NotFound) throw new InvalidOperationException("Launch ticket is invalid or expired. Start the game again.");
+    response.EnsureSuccessStatusCode();
+    var game = await response.Content.ReadFromJsonAsync<Game>(json, ct) ?? throw new InvalidOperationException("Server returned no game.");
+    var (executable, core) = resolve(game);
+    return await Launch(client, server, await CurrentUser(client), game, executable, core, data);
 }
 
 static Uri ParseServer(string value)
@@ -203,5 +265,26 @@ internal sealed record Pairing(string Server, string DeviceId, string Token)
         if (pairing is null || string.IsNullOrEmpty(pairing.Token) || !pairing.DeviceId.StartsWith("retrobridge-", StringComparison.Ordinal))
             throw new InvalidOperationException("Pairing file is invalid. Run pair again.");
         return pairing;
+    }
+}
+
+// Executable and core paths chosen on this computer; launch links can never supply them.
+internal sealed record LocalSettings(string RetroArch, Dictionary<string, string> Cores)
+{
+    private static string PathIn(string data) => Path.Combine(data, "settings.json");
+
+    public static void Save(string data, LocalSettings settings)
+    {
+        foreach (var path in settings.Cores.Values.Prepend(settings.RetroArch))
+            if (!Path.IsPathFullyQualified(path) || !File.Exists(path)) throw new ArgumentException($"Expected an existing absolute file path: {path}");
+        if (settings.Cores.Count == 0) throw new ArgumentException("Configure at least one core, for example --core nes=<path>.");
+        Directory.CreateDirectory(data);
+        File.WriteAllText(PathIn(data), JsonSerializer.Serialize(settings));
+    }
+
+    public static LocalSettings Load(string data)
+    {
+        if (!File.Exists(PathIn(data))) throw new InvalidOperationException("Launch settings are missing. Run configure --retroarch <path> --core nes=<path>.");
+        return JsonSerializer.Deserialize<LocalSettings>(File.ReadAllText(PathIn(data))) ?? throw new InvalidOperationException("Launch settings are invalid. Run configure again.");
     }
 }

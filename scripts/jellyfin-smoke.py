@@ -99,7 +99,51 @@ def companion(*args, timeout=60):
     return subprocess.run(['dotnet', str(LAUNCHER), *args], capture_output=True, text=True, timeout=timeout)
 
 
-def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary):
+def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary):
+    """Play page → ticket → retrobridge:// link → companion, using the paired device and local settings."""
+    devices = server.request('GET', '/RetroBridge/Devices', token=ordinary)
+    if [d['Id'] for d in devices] != [device] or any('Token' in key for d in devices for key in d):
+        raise AssertionError('Devices endpoint must list exactly the paired device and no tokens')
+    configured = companion('configure', '--retroarch', '/usr/bin/true', '--core', 'nes=' + str(stub_core), '--data', str(data))
+    if configured.returncode:
+        raise AssertionError('configure failed: ' + configured.stderr.strip())
+    browser = REPO / 'tests/browser'
+    if not (browser / 'node_modules/jsdom').is_dir():
+        raise RuntimeError('Run npm ci in tests/browser first')
+    page = subprocess.run(['node', str(browser / 'play-page.js'), server.url, user_id], capture_output=True, text=True, timeout=60,
+                          env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary})
+    if page.returncode:
+        raise AssertionError('Play page failed: ' + page.stderr.strip()[-300:])
+    clicked = json.loads(page.stdout)
+    if clicked['devices'] != [device] or clicked['games'] != ['save-counter'] or clicked['errors']:
+        raise AssertionError(f'Unexpected play page state: {clicked}')
+    log = data / 'launcher.log'
+    if os_handler:
+        # Real OS dispatch: the registered handler receives the link exactly as a browser would hand it over.
+        registered = companion('register', '--data', str(data))
+        if registered.returncode:
+            raise AssertionError('register failed: ' + registered.stderr.strip())
+        try:
+            opener = ['/usr/bin/open'] if sys.platform == 'darwin' else ['xdg-open']
+            subprocess.run([*opener, clicked['link']], check=True, timeout=30)
+            deadline = time.monotonic() + 60
+            while 'RetroArch exited with code 0' not in (log.read_text() if log.exists() else ''):
+                if time.monotonic() > deadline:
+                    raise AssertionError('OS link handler did not launch: ' + (log.read_text()[-300:] if log.exists() else 'no log'))
+                time.sleep(1)
+        finally:
+            companion('unregister')
+        summary['os_link_handler'] = sys.platform
+    else:
+        opened = companion('open', clicked['link'], '--data', str(data))
+        if opened.returncode or 'RetroArch exited with code 0' not in log.read_text():
+            raise AssertionError('open failed: ' + log.read_text()[-300:])
+    if companion('open', clicked['link'], '--data', str(data)).returncode != 1:
+        raise AssertionError('A clicked link must not launch twice')
+    summary['one_click_play'] = True
+
+
+def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary, os_handler=False):
     """Quick Connect pairing, ticket issue/redeem, replay/device binding, and access revocation."""
     if os.name == 'nt':
         summary['pairing_and_tickets'] = 'skipped on Windows (process stub is Unix-only)'
@@ -153,6 +197,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
             rejected = launch(value)
             if rejected.returncode != 1 or 'invalid or expired' not in rejected.stderr:
                 raise AssertionError(f'{name} ticket was not rejected')
+        verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary)
 
         config['PlayerUserIds'] = []
         server.request('POST', config_path, config, admin)
@@ -161,7 +206,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
     summary['pairing_and_tickets'] = True
 
 
-def verify_server(server, container, fixtures, summary):
+def verify_server(server, container, fixtures, summary, os_handler=False):
     info = server.ready()
     if info['Version'] not in ('12.1', '12.1.0'):
         raise AssertionError(f'Unexpected Jellyfin version: {info["Version"]}')
@@ -222,7 +267,7 @@ def verify_server(server, container, fixtures, summary):
         server.request(method, endpoint, expected=(401,))
         server.request(method, endpoint, token=ordinary, expected=(403,))
     summary['real_authentication_boundaries'] = True
-    verify_pairing(server, admin, ordinary, user['Id'], game, config, config_path, summary)
+    verify_pairing(server, admin, ordinary, user['Id'], game, config, config_path, summary, os_handler)
 
     config['GameRoots'] = []
     server.request('POST', config_path, config, admin)
@@ -252,6 +297,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native-executable', type=Path, help='Also launch a real RetroArch executable twice (Unix)')
     parser.add_argument('--native-core', type=Path, help='Installed Nestopia core for the native save test')
+    parser.add_argument('--os-link-handler', action='store_true', help='Register the real retrobridge:// handler for this user during the test, then unregister it')
     parser.add_argument('--native-linux-docker', action='store_true', help='Also run the native save test in a headless Linux RetroArch container')
     parser.add_argument('--native-temp-parent', type=Path, help='Directory accessible to RetroArch; needed for sandboxed macOS builds')
     args = parser.parse_args()
@@ -283,7 +329,7 @@ def main():
             started = True
             server = Server(host_url(container))
             print('Testing real Jellyfin at ' + server.url, flush=True)
-            admin, game = verify_server(server, container, fixtures, summary)
+            admin, game = verify_server(server, container, fixtures, summary, args.os_link_handler)
             if args.native_executable:
                 from native_smoke import verify_native
                 summary['native_emulation'] = verify_native(server.url, admin, game, args.native_executable, args.native_core, args.native_temp_parent)

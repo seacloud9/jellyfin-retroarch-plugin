@@ -53,6 +53,17 @@ rmdir "$RA/tmp"
 rm -rf ~/.dotnet   # removes the SDK; required to build this repository
 ```
 
+One-click play leftovers (the smoke tests unregister their handler and use temporary data directories):
+
+```sh
+RetroBridge.Launcher unregister              # if you registered the link handler yourself
+rm -rf ~/Library/Application\ Support/RetroBridge   # macOS default data: pairing token, settings, cache, saves
+rm -rf ~/.local/share/RetroBridge             # Linux default data
+rm -rf tests/browser/node_modules             # jsdom for the play-page test
+```
+
+Deleting a data directory also deletes local saves. Revoke a pairing in Jellyfin under Dashboard → Devices.
+
 Verify that nothing remains:
 
 ```sh

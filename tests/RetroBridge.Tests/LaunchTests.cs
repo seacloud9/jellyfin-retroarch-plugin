@@ -44,4 +44,24 @@ public sealed class LaunchTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    private const string Ticket = "AbCdEfGhIjKlMnOpQrStUv-_0123456789";
+
+    [Fact]
+    public void LaunchLinkRoundTripsOnlyTheTicket() => Assert.Equal(Ticket, LaunchLink.ParseTicket(LaunchLink.Create(Ticket)));
+
+    [Theory]
+    [InlineData("retrobridge://launch?ticket=short")]
+    [InlineData("retrobridge://launch?ticket=" + Ticket + "&server=https://evil")]
+    [InlineData("retrobridge://launch?server=https://evil&ticket=" + Ticket)]
+    [InlineData("retrobridge://launch?ticket=" + Ticket + "%26core=x")]
+    [InlineData("retrobridge://launch/../x?ticket=" + Ticket)]
+    [InlineData("retrobridge://evil?ticket=" + Ticket)]
+    [InlineData("retrobridge://user@launch?ticket=" + Ticket)]
+    [InlineData("retrobridge://launch:99?ticket=" + Ticket)]
+    [InlineData("retrobridge://launch?ticket=" + Ticket + "#x")]
+    [InlineData("https://launch?ticket=" + Ticket)]
+    [InlineData("retrobridge://launch?ticket=" + Ticket + "\"; rm -rf ~")]
+    [InlineData("not a url")]
+    public void LaunchLinkRejectsAnythingButAnOpaqueTicket(string link) => Assert.Null(LaunchLink.ParseTicket(link));
 }

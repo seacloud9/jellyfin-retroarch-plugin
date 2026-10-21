@@ -14,7 +14,7 @@
     <h2>Game library</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
     <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
-    <p>Players pair the companion with Quick Connect, then launch with a single-use ticket. One-click play is planned.</p>
+    <p>Players open <a id="PlayLink" href="#" target="_blank" rel="noopener">the RetroBridge play page</a> after pairing the companion with Quick Connect.</p>
     <ul id="GameList"></ul>
   </div></div>
   <script type="text/javascript">
@@ -50,6 +50,7 @@
       });
       if (!list.children.length) list.textContent = 'No non-administrator users exist.';
     }
+    page.querySelector('#PlayLink').href = ApiClient.getUrl('RetroBridge/Play');
     page.addEventListener('pageshow', async function () {
       try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); await loadGames(); }
       catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }

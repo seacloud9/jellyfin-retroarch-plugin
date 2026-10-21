@@ -11,7 +11,7 @@ public sealed record RedeemRequest(string? Ticket);
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, Func<PluginConfiguration> configuration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, Func<PluginConfiguration> configuration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -24,6 +24,24 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return Ok(catalog.Games.Select(x => x.Game)
             .Where(x => string.IsNullOrWhiteSpace(search) || x.Title.Contains(search, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(platform) || x.Platform == platform));
+    }
+
+    [HttpGet("Devices")]
+    public ActionResult<IEnumerable<PairedDevice>> Devices()
+    {
+        if (!CanPlay() || UserId() is not { } user) return Forbid();
+        return Ok(devices.ForUser(user).OrderByDescending(x => x.LastActive));
+    }
+
+    // Static player page; it authenticates with the browser's existing Jellyfin session and holds no data itself.
+    [HttpGet("Play")]
+    [AllowAnonymous]
+    public IActionResult Play()
+    {
+        var stream = typeof(GamesController).Assembly.GetManifestResourceStream("Jellyfin.Plugin.RetroBridge.Configuration.playPage.html")!;
+        Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'";
+        Response.Headers.CacheControl = "no-store";
+        return File(stream, "text/html; charset=utf-8");
     }
 
     [HttpPost("Scan")]

@@ -6,5 +6,6 @@
     <PackageReference Include="Jellyfin.Model" Version="12.1.0" ExcludeAssets="runtime" />
     <ProjectReference Include="../RetroBridge.Domain/RetroBridge.Domain.csproj" />
     <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="Configuration/playPage.html" />
   </ItemGroup>
 </Project>

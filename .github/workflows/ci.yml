@@ -27,6 +27,15 @@ jobs:
         if: runner.os != 'Windows'
         run: python scripts/launcher-smoke.py
       - run: python scripts/package-plugin.py
+      - name: Per-user link handler registration
+        run: python scripts/link-handler-check.py
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: '22'
+      - name: Browser test dependencies
+        if: runner.os == 'Linux'
+        run: npm ci --prefix tests/browser
       - name: Real Jellyfin and headless RetroArch save test (Linux Docker)
         if: runner.os == 'Linux'
         run: python scripts/jellyfin-smoke.py --native-linux-docker

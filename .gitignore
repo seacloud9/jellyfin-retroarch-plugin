@@ -5,3 +5,4 @@ artifacts/
 .DS_Store
 TestResults/
 __pycache__/
+node_modules/
