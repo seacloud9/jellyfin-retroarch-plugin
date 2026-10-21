@@ -25,7 +25,7 @@
 </style>
 </head><body><main>
   <h1>RetroBridge</h1>
-  <p class="muted">Play NES, Game Boy, and Game Boy Color games in RetroArch on this computer.</p>
+  <p class="muted">Play NES, Game Boy, and Game Boy Color games in RetroArch on a paired computer.</p>
   <div id="setup" class="notice" hidden></div>
   <div id="library" hidden>
     <div class="bar">
@@ -38,7 +38,9 @@
   </div>
 <script>
 (function () {
-  var auth = null, games = [];
+  var auth = null, games = [], devices = [];
+  // Phones and tablets cannot run the desktop companion, so they can only send launches to a listening device.
+  var mobile = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var $ = function (id) { return document.getElementById(id); };
 
   // Reuse the Jellyfin web client's session from this origin; this page stores nothing.
@@ -75,11 +77,18 @@
     });
     if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
   }
+  function selected() { return devices.filter(function (d) { return d.Id === $('device').value; })[0]; }
   async function launch(game, button) {
+    var device = selected();
+    if (mobile && !device.Listening) {
+      $('status').textContent = device.Name + ' is not listening. On that computer, run: RetroBridge.Launcher listen — then try again.';
+      return;
+    }
     button.disabled = true; $('status').textContent = 'Preparing ' + game.Title + '…';
     try {
-      var result = await api('POST', 'Games/' + encodeURIComponent(game.Id) + '/LaunchTicket', { DeviceId: $('device').value });
-      $('status').textContent = 'Opening RetroBridge on this computer. If nothing happens, run the companion\'s register command.';
+      var result = await api('POST', 'Games/' + encodeURIComponent(game.Id) + '/LaunchTicket', { DeviceId: device.Id });
+      if (result.Delivered) { $('status').textContent = 'Sent to ' + device.Name + '. ' + game.Title + ' will start there in a few seconds.'; return; }
+      $('status').textContent = 'Opening RetroBridge on this computer. If nothing happens, run the companion\'s register command, or listen on ' + device.Name + '.';
       window.location.href = 'retrobridge://launch?ticket=' + encodeURIComponent(result.Ticket);
     } catch (error) {
       $('status').textContent = error.status === 403 ? 'Your access to RetroBridge was removed.' : 'Could not start the game. Try again.';
@@ -89,13 +98,16 @@
     auth = session();
     if (!auth) { setup(['Sign in to Jellyfin in this browser first, then reload this page.']); return; }
     try {
-      var devices = await api('GET', 'Devices');
+      devices = await api('GET', 'Devices');
       if (!devices.length) {
-        setup(['Pair this computer first. Install the RetroBridge companion and run:', ['', 'RetroBridge.Launcher pair ' + location.origin + location.pathname.replace(/RetroBridge\/Play$/, '')],
+        setup([mobile ? 'Pair a computer first. On the computer you want to play on, install the RetroBridge companion and run:' : 'Pair this computer first. Install the RetroBridge companion and run:', ['', 'RetroBridge.Launcher pair ' + location.origin + location.pathname.replace(/RetroBridge\/Play$/, '')],
           'Then enter the code shown under your Jellyfin profile → Quick Connect, and reload this page.']);
         return;
       }
-      devices.forEach(function (d) { var o = document.createElement('option'); o.value = d.Id; o.textContent = d.Name; $('device').append(o); });
+      // Listening devices first: they work from any browser.
+      devices.sort(function (a, b) { return b.Listening - a.Listening; }).forEach(function (d) {
+        var o = document.createElement('option'); o.value = d.Id; o.textContent = d.Name + (d.Listening ? ' (ready)' : ''); $('device').append(o);
+      });
       games = await api('GET', 'Games');
       $('library').hidden = false; render();
     } catch (error) {

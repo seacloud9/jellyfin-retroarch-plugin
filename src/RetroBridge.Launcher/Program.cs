@@ -41,6 +41,8 @@ try
                 return await Redeem(data, ticket, game => (settings.RetroArch,
                     settings.Cores.GetValueOrDefault(game.Platform) ?? throw new InvalidOperationException($"No core is configured for {game.Platform}. Run configure --core {game.Platform}=<path>.")));
             }
+        case ["listen", .. var rest]:
+            return await Listen(DataDirectory(Option(rest, "--data")));
         case ["launch", var data, var ticket, var executable, var core]:
             return await Redeem(data, ticket, _ => (executable, core));
         case ["register", .. var rest]:
@@ -72,6 +74,7 @@ try
             Console.WriteLine("  RetroBridge.Launcher configure --retroarch <path> --core nes=<path> [--core gb=<path>] [--core gbc=<path>] [--data <dir>]");
             Console.WriteLine("  RetroBridge.Launcher register [--data <dir>]      (handle retrobridge:// links from the play page)");
             Console.WriteLine("  RetroBridge.Launcher unregister");
+            Console.WriteLine("  RetroBridge.Launcher listen [--data <dir>]          (start games sent from any browser, including phones)");
             Console.WriteLine("  RetroBridge.Launcher open <retrobridge://launch?ticket=...> [--data <dir>]");
             Console.WriteLine("  RetroBridge.Launcher launch <data-directory> <ticket> <retroarch-path> <core-path>");
             Console.WriteLine($"Default data directory: {DataDirectory(null)}");
@@ -116,6 +119,50 @@ async Task<int> Redeem(string data, string ticket, Func<Game, (string Executable
     var game = await response.Content.ReadFromJsonAsync<Game>(json, ct) ?? throw new InvalidOperationException("Server returned no game.");
     var (executable, core) = resolve(game);
     return await Launch(client, server, await CurrentUser(client), game, executable, core, data);
+}
+
+// Checks in with the server and launches games sent to this device, one at a time, until cancelled.
+async Task<int> Listen(string data)
+{
+    var pairing = Pairing.Load(data);
+    var settings = LocalSettings.Load(data);
+    var server = ParseServer(pairing.Server);
+    using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
+    client.Timeout = TimeSpan.FromSeconds(30);
+    var user = await CurrentUser(client);
+    Console.WriteLine($"Listening for games sent to this device ({pairing.DeviceId}). Press Ctrl+C to stop.");
+    var delay = TimeSpan.FromSeconds(3);
+    while (!ct.IsCancellationRequested)
+    {
+        try
+        {
+            using var response = await client.PostAsync("RetroBridge/LaunchTickets/Claim", null, ct);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("This device is no longer paired. Run pair again.");
+            if (response.StatusCode == HttpStatusCode.Forbidden) throw new InvalidOperationException("Your account no longer has RetroBridge access.");
+            response.EnsureSuccessStatusCode();
+            delay = TimeSpan.FromSeconds(3);
+            if (response.StatusCode == HttpStatusCode.OK && await response.Content.ReadFromJsonAsync<Game>(json, ct) is { } game)
+            {
+                try
+                {
+                    var core = settings.Cores.GetValueOrDefault(game.Platform) ?? throw new InvalidOperationException($"No core is configured for {game.Platform}. Run configure --core {game.Platform}=<path>.");
+                    await Launch(client, server, user, game, settings.RetroArch, core, data);
+                }
+                // A failed launch must not stop the listener.
+                catch (Exception ex) when (ex is ArgumentException or IOException or HttpRequestException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+                { Console.Error.WriteLine($"Could not start {game.Title}: {ex.Message}"); }
+                continue;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.Error.WriteLine($"Server unreachable ({ex.Message}); retrying.");
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { }
+        await Task.Delay(delay, ct);
+    }
+    return 0;
 }
 
 static Uri ParseServer(string value)

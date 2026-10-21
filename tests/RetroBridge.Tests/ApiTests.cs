@@ -188,6 +188,42 @@ public sealed class ApiTests : IDisposable
         Assert.Contains("retrobridge://launch?ticket=", await response.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task ListeningDevicesReceiveLaunchesWithoutATicketInTheBrowser()
+    {
+        var (root, game) = await ScanFixture();
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        try
+        {
+            async Task<System.Text.Json.JsonElement> Request()
+            {
+                using var response = await _client.SendAsync(As(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/LaunchTicket", "User", Player, "phone", new { DeviceId = "retrobridge-mine" }));
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            }
+            async Task<HttpResponseMessage> Claim(string device) => await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/LaunchTickets/Claim", "User", Player, device));
+
+            Assert.False((await Request()).GetProperty("delivered").GetBoolean());
+            using (var idle = await Claim("retrobridge-mine")) Assert.Equal(HttpStatusCode.NoContent, idle.StatusCode);
+            using (var devices = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Devices", "User", Player, "phone")))
+                Assert.Contains("\"listening\":true", await devices.Content.ReadAsStringAsync());
+
+            var delivered = await Request();
+            Assert.True(delivered.GetProperty("delivered").GetBoolean());
+            Assert.False(delivered.TryGetProperty("ticket", out _));
+            using (var other = await Claim("retrobridge-other")) Assert.Equal(HttpStatusCode.NoContent, other.StatusCode);
+            using (var claimed = await Claim("retrobridge-mine")) Assert.Equal(game.Id, (await claimed.Content.ReadFromJsonAsync<Game>())!.Id);
+            using (var again = await Claim("retrobridge-mine")) Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+
+            Assert.True((await Request()).GetProperty("delivered").GetBoolean());
+            _time.Advance(LaunchTickets.Lifetime);
+            using (var expired = await Claim("retrobridge-mine")) Assert.Equal(HttpStatusCode.NoContent, expired.StatusCode);
+            _time.Advance(LaunchTickets.ListenerTimeout);
+            Assert.False((await Request()).GetProperty("delivered").GetBoolean());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class TestDevices : IPairedDevices
     {
         public IEnumerable<PairedDevice> ForUser(Guid user) =>

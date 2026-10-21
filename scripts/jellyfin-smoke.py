@@ -142,6 +142,38 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
         raise AssertionError('A clicked link must not launch twice')
     summary['one_click_play'] = True
 
+    def play_page(*flags):
+        result = subprocess.run(['node', str(browser / 'play-page.js'), server.url, user_id, *flags], capture_output=True, text=True,
+                                timeout=60, env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary})
+        if result.returncode:
+            raise AssertionError('Play page failed: ' + result.stderr.strip()[-300:])
+        return json.loads(result.stdout)
+
+    # A phone must not get a dead link when nothing is listening.
+    idle = play_page('--mobile')
+    if idle['link'] or 'not listening' not in idle['status']:
+        raise AssertionError(f'Phone without a listener: {idle}')
+    listener = subprocess.Popen(['dotnet', str(LAUNCHER), 'listen', '--data', str(data)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        deadline = time.monotonic() + 30
+        while not all(d['Listening'] for d in server.request('GET', '/RetroBridge/Devices', token=ordinary)):
+            if time.monotonic() > deadline or listener.poll() is not None:
+                raise AssertionError('Listener never checked in')
+            time.sleep(1)
+        remote = play_page('--mobile')
+        if remote['link'] or not remote['status'].startswith('Sent to'):
+            raise AssertionError(f'Phone launch was not delivered remotely: {remote}')
+        output = ''
+        deadline = time.monotonic() + 30
+        while 'RetroArch exited with code 0' not in output:
+            if time.monotonic() > deadline:
+                raise AssertionError('Listener did not launch the game: ' + output[-300:])
+            output += listener.stdout.readline()
+    finally:
+        listener.terminate()
+        listener.wait(timeout=10)
+    summary['remote_launch_from_phone'] = True
+
 
 def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary, os_handler=False):
     """Quick Connect pairing, ticket issue/redeem, replay/device binding, and access revocation."""

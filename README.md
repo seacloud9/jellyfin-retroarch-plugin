@@ -51,6 +51,8 @@ RetroBridge.Launcher register
 
 Data defaults to `~/Library/Application Support/RetroBridge`, `~/.local/share/RetroBridge`, or `%LOCALAPPDATA%\RetroBridge`. Pass `--data <dir>` to any command to change it.
 
+**Play from a phone or any browser:** run `RetroBridge.Launcher listen` on the computer, or leave it running. While it runs, that device shows as *(ready)* on the Play page, and Play sends the game straight to it. This works from iPhone, Android, or another computer. The listener checks in every 3 seconds and launches one game at a time. Unpairing the device or removing the player stops it. Starting it automatically at login is not set up yet.
+
 Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in to Jellyfin (administrators find a link on the plugin page). Choose the paired computer and press **Play**. The page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
 
 The link holds only the ticket. Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket, so a repeated click or a forwarded link does nothing. Tickets live in server memory; a Jellyfin restart invalidates outstanding ones. Simultaneous launches of the same game are refused by a per-game lock.
@@ -69,9 +71,10 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 |---|---|---|---|
 | GET | `/RetroBridge/Games?search=...&platform=nes` | Player | Catalog metadata without server paths |
 | POST | `/RetroBridge/Scan` | Administrator | Scan saved folders; returns count, publication status, and issues; 409 if busy |
-| POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; returns a single-use ticket and its expiry |
+| POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
+| POST | `/RetroBridge/LaunchTickets/Claim` | Player, as the device | Check in as listening and receive the oldest pending launch for this device (204 when none) |
 | POST | `/RetroBridge/LaunchTickets/Redeem` | Player, from the bound device | Body `{"Ticket"}`; returns the game; 404 for any invalid, expired, replayed, or foreign ticket |
 | GET | `/RetroBridge/Games/{id}/Content` | Player | Download an indexed file from a currently configured root |
 

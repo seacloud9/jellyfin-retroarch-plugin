@@ -30,7 +30,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public ActionResult<IEnumerable<PairedDevice>> Devices()
     {
         if (!CanPlay() || UserId() is not { } user) return Forbid();
-        return Ok(devices.ForUser(user).OrderByDescending(x => x.LastActive));
+        return Ok(devices.ForUser(user).Select(x => x with { Listening = tickets.IsListening(user, x.Id) }).OrderByDescending(x => x.LastActive));
     }
 
     // Static player page; it authenticates with the browser's existing Jellyfin session and holds no data itself.
@@ -60,8 +60,11 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         if (!CanPlay() || UserId() is not { } user) return Forbid();
         if (string.IsNullOrWhiteSpace(request.DeviceId) || request.DeviceId.Length > 256) return BadRequest(new { Message = "Choose a paired device." });
         if (catalog.Games.All(x => x.Game.Id != id)) return NotFound();
+        // A listening device receives the launch directly, so any browser (including a phone) can start it.
+        if (tickets.IsListening(user, request.DeviceId))
+            return Ok(new { Delivered = true, Expires = tickets.IssueRemote(user, request.DeviceId, id) });
         var (ticket, expires) = tickets.Issue(user, request.DeviceId, id);
-        return Ok(new { Ticket = ticket, Expires = expires });
+        return Ok(new { Delivered = false, Ticket = ticket, Expires = expires });
     }
 
     [HttpPost("LaunchTickets/Redeem")]
@@ -72,6 +75,16 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game;
         // One response for expired, replayed, foreign, and unknown tickets.
         return game is null ? NotFound(new { Message = "Launch ticket is invalid or expired. Start the game again." }) : Ok(game);
+    }
+
+    // Polled by the companion's listen command with the device's own token.
+    [HttpPost("LaunchTickets/Claim")]
+    public ActionResult<Game> Claim()
+    {
+        if (!CanPlay() || UserId() is not { } user || User.FindFirst(DeviceIdClaim)?.Value is not { Length: > 0 } device) return Forbid();
+        var id = tickets.Claim(user, device);
+        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game;
+        return game is null ? NoContent() : Ok(game);
     }
 
     [HttpGet("Games/{id}/Content")]

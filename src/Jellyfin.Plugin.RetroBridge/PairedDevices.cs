@@ -2,7 +2,7 @@ using MediaBrowser.Controller.Devices;
 
 namespace Jellyfin.Plugin.RetroBridge;
 
-public sealed record PairedDevice(string Id, string Name, DateTime? LastActive);
+public sealed record PairedDevice(string Id, string Name, DateTime? LastActive, bool Listening = false);
 
 // The caller's companion devices. Never exposes access tokens.
 public interface IPairedDevices
