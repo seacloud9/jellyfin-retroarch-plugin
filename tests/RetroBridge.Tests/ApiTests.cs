@@ -26,6 +26,7 @@ public sealed class ApiTests : IDisposable
     private readonly PluginConfiguration _configuration = new();
     private readonly TestTime _time = new();
     private int _saves;
+    private readonly ArtworkService _artwork = new(Path.Combine(Path.GetTempPath(), "retrobridge-art-" + Guid.NewGuid().ToString("N")));
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
     {
@@ -34,6 +35,7 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton(_catalog);
             services.AddSingleton(new LaunchTickets(_time));
             services.AddSingleton<IPairedDevices>(new TestDevices());
+            services.AddSingleton(_artwork);
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
             services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("test", _ => { });
@@ -268,6 +270,30 @@ public sealed class ApiTests : IDisposable
                 Assert.Equal("Alpha Quest", Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).Title);
             using (var reset = await Rename("Administrator", new { Title = " " })) Assert.Equal("Alpha", (await reset.Content.ReadFromJsonAsync<Game>())!.Title);
             Assert.Empty(_configuration.TitleOverrides);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ArtIsServedOnlyToPlayersForCatalogGames()
+    {
+        var (root, game) = await ScanFixture();
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        try
+        {
+            using (var none = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Player, "d"))) Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+            var cached = _artwork.PathFor(game.Id);
+            Directory.CreateDirectory(Path.GetDirectoryName(cached)!);
+            await File.WriteAllBytesAsync(cached, [0x89, 0x50, 0x4E, 0x47]);
+            using (var art = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Player, "d")))
+            {
+                Assert.Equal("image/png", art.Content.Headers.ContentType!.MediaType);
+                Assert.Equal(4, (await art.Content.ReadAsByteArrayAsync()).Length);
+            }
+            using (var listed = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games", "User", Player, "d")))
+                Assert.True(Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).HasArt);
+            using (var denied = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Guid.NewGuid(), "d"))) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var traversal = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games/..%2F..%2Fsecret/Art", "User", Player, "d"))) Assert.Equal(HttpStatusCode.NotFound, traversal.StatusCode);
         }
         finally { Directory.Delete(root, true); }
     }

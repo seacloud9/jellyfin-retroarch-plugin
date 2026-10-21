@@ -6,6 +6,7 @@
   :root { --bg: #f4f4f6; --panel: #ffffff; --text: #1b1b1f; --muted: #5d5d66; --accent: #00a4dc; --accent-text: #ffffff; --border: #d9d9df; }
   @media (prefers-color-scheme: dark) { :root { --bg: #101014; --panel: #1c1c22; --text: #ececf1; --muted: #a0a0ab; --border: #2e2e36; } }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
   main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { margin: 0 0 4px; font-size: 1.6rem; }
@@ -13,14 +14,17 @@
   .bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .bar label { flex: 1 1 220px; display: flex; flex-direction: column; gap: 4px; font-size: .875rem; color: var(--muted); }
   input, select, button { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  li { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
-  li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-  li small { color: var(--muted); margin-left: 8px; }
-  button.play { background: var(--accent); color: var(--accent-text); border: 0; padding: 8px 18px; cursor: pointer; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  li { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+  li.empty { grid-column: 1 / -1; }
+  .cover { aspect-ratio: 3 / 4; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); font-weight: 600; letter-spacing: .05em; }
+  .cover img { width: 100%; height: 100%; object-fit: contain; }
+  li span { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
+  li small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  button.play { background: var(--accent); color: var(--accent-text); border: 0; padding: 8px 18px; cursor: pointer; margin-top: auto; }
   button:disabled { opacity: .5; cursor: default; }
   #status { min-height: 1.5em; }
-  .notice { padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
+  .notice { margin-bottom: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
   code { overflow-wrap: anywhere; }
 </style>
 </head><body><main>
@@ -67,17 +71,28 @@
     lines.forEach(function (line) { var p = document.createElement('p'); if (Array.isArray(line)) { p.append(line[0]); var c = document.createElement('code'); c.textContent = line[1]; p.append(c); } else p.textContent = line; box.append(p); });
     box.hidden = false;
   }
+  // Images need the Jellyfin session header, so fetch them and show local blob URLs (cached per game).
+  var arts = {};
+  function art(game) {
+    if (!arts[game.Id]) arts[game.Id] = fetch('Games/' + encodeURIComponent(game.Id) + '/Art', { headers: { Authorization: header() } })
+      .then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { return b && b.type === 'image/png' ? URL.createObjectURL(b) : null; })
+      .catch(function () { return null; });
+    return arts[game.Id];
+  }
   function render() {
     var search = $('search').value.toLowerCase(), platform = $('platform').value, list = $('games');
     list.replaceChildren();
     games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
-      var li = document.createElement('li'), name = document.createElement('span'), tag = document.createElement('small'), play = document.createElement('button');
+      var li = document.createElement('li'), cover = document.createElement('div'), name = document.createElement('span'), tag = document.createElement('small'), play = document.createElement('button');
+      cover.className = 'cover'; cover.textContent = g.Platform.toUpperCase();
+      if (g.HasArt) art(g).then(function (url) { if (!url) return; var img = document.createElement('img'); img.src = url; img.alt = ''; cover.replaceChildren(img); });
       name.textContent = g.Title; tag.textContent = g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : ''); name.append(tag);
       play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title);
+      play.disabled = !devices.length; if (!devices.length) play.title = 'Pair a device to play';
       play.addEventListener('click', function () { launch(g, play); });
-      li.append(name, play); list.append(li);
+      li.append(cover, name, play); list.append(li);
     });
-    if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
+    if (!list.children.length) { var empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
   }
   function selected() { return devices.filter(function (d) { return d.Id === $('device').value; })[0]; }
   async function launch(game, button) {
@@ -102,10 +117,11 @@
     if (!auth) { setup(['Sign in to Jellyfin in this browser first, then reload this page.']); return; }
     try {
       devices = await api('GET', 'Devices');
+      // Browsing works without a device; only Play needs one.
       if (!devices.length) {
+        $('device').closest('label').hidden = true;
         setup([android ? 'Pair a device first. Install the RetroBridge Android app and pair this phone, or on a computer install the companion and run:' : ios ? 'Pair a computer first. On the computer you want to play on, install the RetroBridge companion and run:' : 'Pair this computer first. Install the RetroBridge companion and run:', ['', 'RetroBridge.Launcher pair ' + location.origin + location.pathname.replace(/RetroBridge\/Play$/, '')],
           'Then enter the code shown under your Jellyfin profile → Quick Connect, and reload this page.']);
-        return;
       }
       // Listening devices first: they work from any browser.
       devices.sort(function (a, b) { return b.Listening - a.Listening; }).forEach(function (d) {

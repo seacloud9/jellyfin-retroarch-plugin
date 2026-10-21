@@ -37,7 +37,8 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Real jellyfin-web: dashboard page layout, keyboard navigation, player checkboxes, and error messages (checked only in jsdom).
 - [ ] Controller input, audio, window focus, and normal exit on macOS/Windows/Linux with a playable homebrew game.
 - [ ] Missing executable/core and corrupt content produce actionable messages in the desktop companion log.
-- [ ] Plugin upgrade over an existing install keeps configuration and the catalog snapshot.
+- [ ] Plugin upgrade over an existing install keeps configuration, the catalog snapshot, and cached artwork.
+- [ ] Box art for a real No-Intro-named library (dozens of games): check match quality and misses, and the play page grid on phone and desktop.
 
 ## Verified automatically (for reference)
 

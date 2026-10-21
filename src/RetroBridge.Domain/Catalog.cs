@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 
 namespace RetroBridge.Domain;
 
-public sealed record Game(string Id, string Title, string Platform, string Extension, long Size, string Sha256, string? Region = null);
+public sealed record Game(string Id, string Title, string Platform, string Extension, long Size, string Sha256, string? Region = null, bool HasArt = false);
 // Length and ModifiedTicks (UTC) let later scans skip rehashing unchanged files; -1/0 means unknown.
 public sealed record IndexedGame(Game Game, string Root, string RelativePath, long Length = -1, long ModifiedTicks = 0);
 public sealed record ScanIssue(string Path, string Message);
@@ -36,7 +36,7 @@ public static partial class Titles
             if (region is null && parts.Length > 0 && parts.All(x => Regions.Contains(x, StringComparer.OrdinalIgnoreCase)))
                 region = string.Join(", ", parts.Select(x => Regions.First(r => r.Equals(x, StringComparison.OrdinalIgnoreCase))));
         }
-        var title = SpacePattern().Replace(TagPattern().Replace(name, " ").Replace("[", " ").Replace("]", " "), " ").Trim(' ', '-', '.');
+        var title = SpacePattern().Replace(TagPattern().Replace(name, " ").Replace("[", " ").Replace("]", " "), " ").Trim(' ', '-'); // keep periods: "Super Mario Bros."
         return (title.Length == 0 ? fileName : title, region);
     }
 

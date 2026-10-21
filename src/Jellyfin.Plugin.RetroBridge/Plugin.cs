@@ -14,6 +14,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Administrator-chosen titles by content ID; they survive renames and rescans.
     public TitleOverride[] TitleOverrides { get; set; } = [];
+
+    // Fetch box art from thumbnails.libretro.com after scans. Only the server contacts it.
+    public bool FetchArtwork { get; set; } = true;
 }
 
 public sealed class TitleOverride

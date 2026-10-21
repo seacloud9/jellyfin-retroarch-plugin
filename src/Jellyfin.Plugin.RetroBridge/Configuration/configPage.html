@@ -7,10 +7,12 @@
     <form id="RetroBridgeForm">
       <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
       <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
+      <label><input type="checkbox" id="FetchArtwork" /> Fetch box art from thumbnails.libretro.com after scans (only this server contacts it)</label>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
     </form>
     <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button>
-    <button is="emby-button" id="FullScan" type="button" class="raised">Full rescan</button></p>
+    <button is="emby-button" id="FullScan" type="button" class="raised">Full rescan</button>
+    <button is="emby-button" id="FetchArt" type="button" class="raised">Fetch missing artwork</button></p>
     <p>Scans re-hash only new or changed files and run in the background. A daily scan is scheduled under Dashboard → Scheduled Tasks. Use a full rescan if files were replaced without changing their size and timestamp.</p>
     <p id="ScanStatus" role="status" aria-live="polite"></p>
     <h2>Game library</h2>
@@ -32,7 +34,7 @@
       list.replaceChildren();
       games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
         var li = document.createElement('li');
-        var title = document.createElement('p'); title.textContent = g.Title + ' · ' + g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : '');
+        var title = document.createElement('p'); title.textContent = g.Title + ' · ' + g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : '') + (g.HasArt ? ' · artwork' : '');
         var code = document.createElement('code'); code.textContent = g.Id;
         var edit = document.createElement('button'); edit.type = 'button'; edit.className = 'raised'; edit.setAttribute('is', 'emby-button'); edit.textContent = 'Edit title';
         edit.addEventListener('click', function () { rename(g); });
@@ -65,7 +67,7 @@
     }
     page.querySelector('#PlayLink').href = ApiClient.getUrl('RetroBridge/Play');
     page.addEventListener('pageshow', async function () {
-      try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); await loadGames(); }
+      try { var config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); page.querySelector('#FetchArtwork').checked = config.FetchArtwork !== false; await loadGames(); }
       catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }
     });
     page.querySelector('#RetroBridgeForm').addEventListener('submit', async function (event) {
@@ -73,6 +75,7 @@
       try {
         var config = await ApiClient.getPluginConfiguration(pluginId);
         config.GameRoots = page.querySelector('#GameRoots').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+        config.FetchArtwork = page.querySelector('#FetchArtwork').checked;
         config.PlayerUserIds = Array.from(page.querySelectorAll('#PlayerList input:checked')).map(function (x) { return x.value; });
         await ApiClient.updatePluginConfiguration(pluginId, config); status('Settings saved. Scan to update the library.');
       } catch (_) { status('Could not save settings.'); }
@@ -98,6 +101,14 @@
     }
     page.querySelector('#ScanGames').addEventListener('click', function () { scan(this, false); });
     page.querySelector('#FullScan').addEventListener('click', function () { scan(this, true); });
+    page.querySelector('#FetchArt').addEventListener('click', async function () {
+      this.disabled = true; status('Fetching artwork…');
+      try {
+        var r = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Artwork', { wait: true }), dataType: 'json' });
+        status('Artwork: ' + r.Fetched + ' fetched, ' + r.Cached + ' already cached, ' + r.Missing + ' not found, ' + r.Failed + ' failed.'); await loadGames();
+      } catch (_) { status('Artwork fetching is off or already running.'); }
+      finally { this.disabled = false; }
+    });
     page.querySelector('#GameSearch').addEventListener('input', render);
     page.querySelector('#GamePlatform').addEventListener('change', render);
   }());

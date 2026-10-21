@@ -12,7 +12,7 @@ public sealed record TitleRequest(string? Title);
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -44,6 +44,30 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return Ok(Present(game));
     }
 
+    [HttpGet("Games/{id}/Art")]
+    public IActionResult Art(string id)
+    {
+        if (!CanPlay()) return Forbid();
+        if (catalog.Games.All(x => x.Game.Id != id) || artwork.Open(id) is not { } image) return NotFound();
+        Response.Headers.CacheControl = "private, max-age=86400";
+        return File(image, "image/png");
+    }
+
+    // Fetches missing art now (202), retrying recent misses. ?wait=true returns the counts.
+    [HttpPost("Artwork")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<IActionResult> FetchArtwork([FromQuery] bool wait, CancellationToken cancellationToken)
+    {
+        if (!configuration().FetchArtwork) return Conflict(new { Message = "Artwork fetching is turned off in the plugin settings." });
+        var games = catalog.Games;
+        if (!wait)
+        {
+            _ = Task.Run(() => artwork.FetchMissingAsync(games, true, CancellationToken.None));
+            return Accepted();
+        }
+        return await artwork.FetchMissingAsync(games, true, cancellationToken) is { } result ? Ok(result) : Conflict(new { Message = "Artwork is already being fetched." });
+    }
+
     [HttpGet("Devices")]
     public ActionResult<IEnumerable<PairedDevice>> Devices()
     {
@@ -57,7 +81,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public IActionResult Play()
     {
         var stream = typeof(GamesController).Assembly.GetManifestResourceStream("Jellyfin.Plugin.RetroBridge.Configuration.playPage.html")!;
-        Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'";
+        Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src blob:; frame-ancestors 'none'";
         Response.Headers.CacheControl = "no-store";
         return File(stream, "text/html; charset=utf-8");
     }
@@ -141,7 +165,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     }
 
     private Game Present(Game game) =>
-        configuration().TitleOverrides.FirstOrDefault(x => x.GameId == game.Id) is { } custom ? game with { Title = custom.Title } : game;
+        (configuration().TitleOverrides.FirstOrDefault(x => x.GameId == game.Id) is { } custom ? game with { Title = custom.Title } : game) with { HasArt = artwork.Has(game.Id) };
 
     private Guid? UserId() => Guid.TryParse(User.FindFirst(UserIdClaim)?.Value, out var id) && id != Guid.Empty ? id : null;
 

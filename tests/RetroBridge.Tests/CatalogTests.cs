@@ -169,6 +169,29 @@ public sealed class TitleTests
     [InlineData("Pokemon - Red Version (USA, Europe) (SGB Enhanced)", "Pokemon - Red Version", "USA, Europe")]
     [InlineData("Zelda (Beta) (japan)", "Zelda", "Japan")]
     [InlineData("homebrew-demo", "homebrew-demo", null)]
+    [InlineData("Super Mario Bros. (World)", "Super Mario Bros.", "World")]
     [InlineData("(USA)", "(USA)", "USA")]
     public void CleansFileNames(string file, string title, string? region) => Assert.Equal((title, region), Titles.FromFileName(file));
+}
+
+public sealed class ArtworkMatcherTests
+{
+    private static readonly string[] Index =
+    [
+        "Super Mario Bros. (World)", "Super Mario Bros. (Japan) (Beta)", "Tetris (World) (Rev 1)", "Tetris (Japan)",
+        "Legend of Zelda, The (USA)", "Legend of Zelda, The (Europe)", "Pokemon - Red Version (USA, Europe) (SGB Enhanced)",
+        "Mega Man 2 (USA)", "Mega Man 2 (Europe)", "Q_bert (USA)",
+    ];
+
+    [Theory]
+    [InlineData("Super Mario Bros. (World)", "Super Mario Bros.", "World", "Super Mario Bros. (World)")]
+    [InlineData("smb", "Super Mario Bros", null, "Super Mario Bros. (World)")]
+    [InlineData("The_Legend_of_Zelda_(E)", "The Legend of Zelda", null, "Legend of Zelda, The (USA)")]
+    [InlineData("zelda", "The Legend of Zelda", "Europe", "Legend of Zelda, The (Europe)")]
+    [InlineData("tetris-jp", "Tetris", "Japan", "Tetris (Japan)")]
+    [InlineData("pokered", "Pokemon - Red Version", null, "Pokemon - Red Version (USA, Europe) (SGB Enhanced)")]
+    [InlineData("Q*bert (USA)", "Q bert", "USA", "Q_bert (USA)")]
+    [InlineData("homebrew", "My Homebrew", null, null)]
+    public void FindsTheBestThumbnail(string file, string title, string? region, string? expected) =>
+        Assert.Equal(expected, ArtworkMatcher.Best(file, title, region, Index));
 }

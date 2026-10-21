@@ -53,6 +53,8 @@ Data defaults to `~/Library/Application Support/RetroBridge`, `~/.local/share/Re
 
 **Play from a phone or any browser:** run `RetroBridge.Launcher listen` on the computer, or leave it running. While it runs, that device shows as *(ready)* on the Play page, and Play sends the game straight to it. This works from iPhone, Android, or another computer. The listener checks in every 3 seconds and launches one game at a time. Unpairing the device or removing the player stops it. **`RetroBridge.Launcher autostart on`** starts it at every login, for the current user only: a LaunchAgent on macOS, a systemd user service on Linux (XDG autostart where systemd isn't available), or the `HKCU` Run key on Windows, using a headless console. `autostart off` and `autostart status` turn it off and check it. Background listeners log to `listener.log` in the data directory. Only one listener runs per data directory, and it waits for the network at login.
 
+**Box art:** after each scan, the server fetches box art from the libretro thumbnails project (`thumbnails.libretro.com`) and caches it under `<Jellyfin data>/retrobridge/artwork`. Only the server contacts that site; players load images from Jellyfin. Titles are matched by No-Intro file name first, then by cleaned title with region preference. Unmatched games show a platform tile and are retried weekly or with **Fetch missing artwork**. Turn this off in the plugin settings to keep the server from contacting the site.
+
 Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in to Jellyfin (administrators find a link on the plugin page). Choose the paired computer and press **Play**. The page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
 
 The link holds only the ticket. Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket, so a repeated click or a forwarded link does nothing. Tickets live in server memory; a Jellyfin restart invalidates outstanding ones. Simultaneous launches of the same game are refused by a per-game lock.
@@ -74,6 +76,8 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | GET | `/RetroBridge/Scan` | Administrator | Scan status: `Running`, `Processed`, `Last` result, `LastCompleted` |
 | POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
 | POST | `/RetroBridge/Games/{id}/Title` | Administrator | Body `{"Title"}` (≤ 200 chars); empty restores the file-name title |
+| GET | `/RetroBridge/Games/{id}/Art` | Player | Cached box art (PNG), 404 if none |
+| POST | `/RetroBridge/Artwork` | Administrator | Fetch missing art now, retrying misses (202; `?wait=true` returns counts); 409 if turned off |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
 | POST | `/RetroBridge/LaunchTickets/Claim` | Player, as the device | Check in as listening and receive the oldest pending launch for this device (204 when none) |
@@ -92,7 +96,7 @@ Still required before a usable beta:
 
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
 - Native RetroArch save/restart tests on Windows.
-- Metadata/artwork editing.
+- Custom artwork uploads, descriptions, and other metadata.
 - Per-game permissions, artwork, and a play page integrated into Jellyfin's own navigation.
 - Packaged companion installers (it currently runs from a .NET build).
 - Dedicated game UI, installers, repository manifest, and release verification.
