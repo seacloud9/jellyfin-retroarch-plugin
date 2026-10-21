@@ -70,5 +70,44 @@ public sealed class CatalogTests : IDisposable
         Assert.Single(result.Games); Assert.Equal(2, result.Issues.Count);
     }
 
+    [Fact]
+    public async Task PublishedCatalogSurvivesServiceRestart()
+    {
+        await Write("persisted.nes");
+        var snapshot = Path.Combine(_root, "data", "catalog.json");
+        var scanned = (await new CatalogService(snapshot).ScanAsync([Path.Combine(_root)], default))!.Games;
+        var restarted = new CatalogService(snapshot);
+        Assert.Equal(scanned, restarted.Games);
+        Assert.Empty(new CatalogService().Games);
+    }
+
+    [Fact]
+    public async Task FailedScanDoesNotOverwriteSnapshot()
+    {
+        await Write("kept.nes");
+        var snapshot = Path.Combine(_root, "data", "catalog.json");
+        var service = new CatalogService(snapshot);
+        await service.ScanAsync([_root], default);
+        var failed = await service.ScanAsync([Path.Combine(_root, "missing")], default);
+        Assert.NotEmpty(failed!.Issues);
+        Assert.Equal("kept", Assert.Single(new CatalogService(snapshot).Games).Game.Title);
+    }
+
+    [Fact]
+    public async Task CorruptOrTamperedSnapshotIsNotTrusted()
+    {
+        var snapshot = Path.Combine(_root, "catalog.json");
+        await File.WriteAllTextAsync(snapshot, "{ not json");
+        Assert.Empty(new CatalogService(snapshot).Games);
+
+        await Write("valid.nes");
+        var valid = Assert.Single((await new CatalogScanner().ScanAsync([_root])).Games);
+        var tampered = valid with { Game = valid.Game with { Id = "gb-" + valid.Game.Sha256 } };
+        var absolute = valid with { RelativePath = Path.Combine(_root, "valid.nes") };
+        CatalogSnapshot.Save(snapshot, [valid, tampered, absolute]);
+        Assert.Equal(valid, Assert.Single(CatalogSnapshot.Load(snapshot)));
+        Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
+    }
+
     public void Dispose() => Directory.Delete(_root, true);
 }

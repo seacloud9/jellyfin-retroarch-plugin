@@ -168,6 +168,9 @@ def verify_server(server, container, fixtures, summary):
     admin = server.login('retrobridge-admin', admin_password)
     if server.request('GET', config_path, token=admin)['GameRoots'] != ['/games']:
         raise AssertionError('Plugin configuration did not survive restart')
+    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+        raise AssertionError('Catalog was not restored from its snapshot after restart')
+    summary['catalog_persisted_across_restart'] = True
     server.request('POST', '/RetroBridge/Scan', token=admin)
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Content identity did not survive restart and rescan')

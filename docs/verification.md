@@ -15,6 +15,7 @@ Recorded October 2, 2026, and updated October 21, 2026, on macOS arm64 using .NE
 | Real Jellyfin smoke (Oct 21) | Passed | `scripts/jellyfin-smoke.py` with pinned `jellyfin/jellyfin:12.1` (12.1.0) in Docker: packaged plugin loads Active, config page served, scan/filter/checksum/download/rescan, 401/403 for anonymous/non-admin users, root revocation, restart preserves config and identity |
 | Native save persistence (Oct 21) | Passed | Same run with `--native-executable`: companion downloaded the save-counter fixture from real Jellyfin and launched sandboxed RetroArch 1.22.2 with Nestopia (buildbot nightly, arm64) twice; `.srm` counter went 1 → 2 |
 | Linux native save (Oct 21) | Passed | `--native-linux-docker`: headless RetroArch 1.18.0 + Nestopia (Ubuntu 24.04 packages, arm64) in Docker against the same real Jellyfin; counter 1 → 2. See [Linux Docker test](linux-native-docker.md) |
+| Catalog persistence (Oct 21) | Passed | 3 new unit tests (restart reload, failed scan keeps snapshot, corrupt/tampered rejected; 23 total); real Jellyfin restart restores catalog without rescan |
 | Plugin packaging | Passed | ZIP contains `Jellyfin.Plugin.RetroBridge.dll` and `RetroBridge.Domain.dll`; SHA-256 sidecar generated |
 
 Build artifacts and browser harness outputs are generated locally under ignored directories and are not committed. CI is configured to upload plugin and companion build artifacts; this record does not assert that hosted CI has run successfully.

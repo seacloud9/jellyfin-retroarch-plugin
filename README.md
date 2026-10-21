@@ -32,7 +32,7 @@ The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/
 
 All endpoints require Jellyfin's `RequiresElevation` policy. Ordinary user access is intentionally unavailable until explicit library permissions are implemented. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
-Scans rehash supported files and publish a new in-memory catalog only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. **Rescan after every server restart.** Large libraries, incremental scans, and persistent database storage are later work.
+Scans rehash supported files and publish a new in-memory catalog only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Rescan after changing game files. Large libraries and incremental scans are later work.
 
 ## Run the companion
 
@@ -73,7 +73,7 @@ Still required before a usable beta:
 
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
 - Native RetroArch save/restart tests on Windows.
-- Persistent catalog storage, incremental/background scans, metadata/artwork editing.
+- Incremental/background scans, metadata/artwork editing.
 - Per-user game access, device pairing, short-lived single-use launch tickets, and one-click play.
 - Dedicated game UI, installers, repository manifest, and release verification.
 

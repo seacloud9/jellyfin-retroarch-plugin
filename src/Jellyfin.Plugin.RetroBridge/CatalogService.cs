@@ -1,3 +1,4 @@
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,13 +8,24 @@ namespace Jellyfin.Plugin.RetroBridge;
 
 public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
-    public void RegisterServices(IServiceCollection services, IServerApplicationHost host) => services.AddSingleton<CatalogService>();
+    public void RegisterServices(IServiceCollection services, IServerApplicationHost host) => services.AddSingleton(provider =>
+        // DataPath outlives plugin directory replacement during upgrades.
+        new CatalogService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "catalog.json")));
 }
 
 public sealed class CatalogService
 {
     private readonly SemaphoreSlim _scanLock = new(1, 1);
-    private IndexedGame[] _games = [];
+    private readonly string? _snapshotPath;
+    private IndexedGame[] _games;
+
+    // Without a snapshot path the catalog is memory-only.
+    public CatalogService(string? snapshotPath = null)
+    {
+        _snapshotPath = snapshotPath;
+        _games = snapshotPath is null ? [] : CatalogSnapshot.Load(snapshotPath);
+    }
+
     public IReadOnlyList<IndexedGame> Games => Volatile.Read(ref _games);
 
     public async Task<ScanResult?> ScanAsync(string[] roots, CancellationToken cancellationToken)
@@ -23,7 +35,12 @@ public sealed class CatalogService
         {
             var result = await Task.Run(() => new CatalogScanner().ScanAsync(roots, cancellationToken), cancellationToken);
             // A failed or cancelled scan must not erase the previous catalog.
-            if (result.Issues.Count == 0) Volatile.Write(ref _games, result.Games.ToArray());
+            if (result.Issues.Count == 0)
+            {
+                var games = result.Games.ToArray();
+                if (_snapshotPath is not null) CatalogSnapshot.Save(_snapshotPath, games);
+                Volatile.Write(ref _games, games);
+            }
             return result;
         }
         finally { _scanLock.Release(); }
