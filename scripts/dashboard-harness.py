@@ -15,8 +15,8 @@ window.ApiClient = {
  updatePluginConfiguration: async (_, config) => { window.harnessConfig = config; },
  getUsers: async () => [{Id:'u1',Name:'Player One',Policy:{IsAdministrator:false}},{Id:'u2',Name:'<b>Player Two</b>',Policy:{IsAdministrator:false}},{Id:'a',Name:'Admin',Policy:{IsAdministrator:true}}],
  getUrl: (x, q) => q && Object.keys(q).length ? x + '?' + new URLSearchParams(q) : x,
- getJSON: async () => window.harnessGames,
- ajax: async (o) => ({Count:3,Published:true,Hashed:o.url.includes('full')?3:0,Reused:o.url.includes('full')?0:3,Issues:[]})
+ getJSON: async (url) => url.includes('Scan') ? ({Running:false,Processed:3,Last:window.harnessLast}) : window.harnessGames,
+ ajax: async (o) => { window.harnessLast = {Count:3,Published:true,Hashed:o.url.includes('full')?3:0,Reused:o.url.includes('full')?0:3,Issues:[]}; return {Running:true,Processed:1,Last:null}; }
 };
 window.addEventListener('DOMContentLoaded', () => document.querySelector('#RetroBridgePage').dispatchEvent(new Event('pageshow')));
 </script><style>body{font:16px system-ui;max-width:900px;margin:32px auto;padding:0 20px}input[type=checkbox]{display:inline;width:auto;margin:4px}input,textarea,select{display:block;margin:10px 0 20px;width:100%;box-sizing:border-box}button{padding:10px}code{overflow-wrap:anywhere}</style>'''

@@ -122,7 +122,7 @@ def main():
             config = server.request('GET', config_path, token=admin)
             config.update(GameRoots=['/games'], PlayerUserIds=[user['Id']])
             server.request('POST', config_path, config, admin)
-            server.request('POST', '/RetroBridge/Scan', token=admin)
+            server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
             game = server.request('GET', '/RetroBridge/Games', token=admin)[0]
             player = server.login('player', player_password)
 

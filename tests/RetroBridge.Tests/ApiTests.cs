@@ -224,6 +224,31 @@ public sealed class ApiTests : IDisposable
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task ScansRunInTheBackgroundAndReportStatus()
+    {
+        var (root, game) = await ScanFixture();
+        try
+        {
+            using var started = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Scan", "Administrator", Guid.NewGuid(), "d"));
+            Assert.Equal(HttpStatusCode.Accepted, started.StatusCode);
+            System.Text.Json.JsonElement status;
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                await Task.Delay(50);
+                using var poll = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Scan", "Administrator", Guid.NewGuid(), "d"));
+                status = await poll.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            } while ((status.GetProperty("running").GetBoolean() || status.GetProperty("last").ValueKind == System.Text.Json.JsonValueKind.Null) && DateTime.UtcNow < deadline);
+            Assert.False(status.GetProperty("running").GetBoolean());
+            Assert.Equal(1, status.GetProperty("last").GetProperty("reused").GetInt32());
+            Assert.Equal(game.Id, Assert.Single(_catalog.Games).Game.Id);
+            using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Scan", "User", Player, "d"));
+            Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class TestDevices : IPairedDevices
     {
         public IEnumerable<PairedDevice> ForUser(Guid user) =>

@@ -44,14 +44,31 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return File(stream, "text/html; charset=utf-8");
     }
 
+    // Starts a background scan (202). ?wait=true waits for the result instead, for scripts and tests.
     [HttpPost("Scan")]
     [Authorize(Policy = Policies.RequiresElevation)]
-    public async Task<IActionResult> Scan([FromQuery] bool full, CancellationToken cancellationToken)
+    public async Task<IActionResult> Scan([FromQuery] bool full, [FromQuery] bool wait, CancellationToken cancellationToken)
     {
-        var result = await catalog.ScanAsync(configuration().GameRoots.ToArray(), cancellationToken, full);
+        var roots = configuration().GameRoots.ToArray();
+        if (!wait)
+            return catalog.TryStartBackground(roots, full) ? Accepted(ScanStatusBody()) : Conflict(new { Message = "A scan is already running." });
+        var result = await catalog.ScanAsync(roots, cancellationToken, full);
         if (result is null) return Conflict(new { Message = "A scan is already running." });
-        return Ok(new { Count = result.Games.Count, Published = result.Issues.Count == 0, result.Hashed, result.Reused, result.Issues });
+        return Ok(Summary(result));
     }
+
+    [HttpGet("Scan")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public IActionResult ScanStatus() => Ok(ScanStatusBody());
+
+    private object ScanStatusBody()
+    {
+        var status = catalog.Status;
+        return new { status.Running, status.Processed, Last = status.Last is null ? null : Summary(status.Last), status.LastCompleted };
+    }
+
+    private static object Summary(ScanResult result) =>
+        new { Count = result.Games.Count, Published = result.Issues.Count == 0, result.Hashed, result.Reused, result.Issues };
 
     // Issues a ticket for the caller's paired companion device; the browser never sees a device credential.
     [HttpPost("Games/{id}/LaunchTicket")]

@@ -51,7 +51,7 @@ public sealed class CatalogScanner
 {
     // With a previous catalog, files whose size and modification time are unchanged keep their hash.
     // Downloads are still checksum-verified by the companion, so a missed change fails safely.
-    public async Task<ScanResult> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default, IEnumerable<IndexedGame>? previous = null)
+    public async Task<ScanResult> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default, IEnumerable<IndexedGame>? previous = null, Action<int>? progress = null)
     {
         var known = (previous ?? []).Where(x => x.Length >= 0)
             .GroupBy(x => (x.Root, x.RelativePath)).ToDictionary(x => x.Key, x => x.First());
@@ -100,6 +100,7 @@ public sealed class CatalogScanner
                                 hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
                                 hashed++;
                             }
+                            progress?.Invoke(hashed + reused);
                             var id = platform + "-" + hash;
                             games.TryAdd(id, new(new(id, Path.GetFileNameWithoutExtension(path), platform, extension, info.Length, hash), root, relative, info.Length, modified));
                         }

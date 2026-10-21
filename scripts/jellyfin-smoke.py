@@ -287,7 +287,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     config = server.request('GET', config_path, token=admin)
     config['GameRoots'] = ['/games']
     server.request('POST', config_path, config, admin)
-    scan = server.request('POST', '/RetroBridge/Scan', token=admin)
+    scan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     if not scan['Published'] or scan['Count'] != 1:
         raise AssertionError('Fixture scan failed')
     games = server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin)
@@ -311,15 +311,46 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     except urllib.error.HTTPError as error:
         raise AssertionError(f'Launcher-style authorization rejected: {error.code}') from None
     summary['launcher_token_header'] = True
-    rescan = server.request('POST', '/RetroBridge/Scan', token=admin)
+    rescan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Rescan changed identity or duplicated content')
     if (rescan['Hashed'], rescan['Reused']) != (0, 1):
         raise AssertionError(f'Unchanged rescan should reuse the hash: {rescan}')
-    full = server.request('POST', '/RetroBridge/Scan?full=true', token=admin)
+    full = server.request('POST', '/RetroBridge/Scan?full=true&wait=true', token=admin)
     if (full['Hashed'], full['Reused']) != (1, 0):
         raise AssertionError(f'Full rescan should rehash: {full}')
     summary['incremental_scan'] = True
+
+    # Background scan: returns immediately, then reports through the status endpoint.
+    started = server.request('POST', '/RetroBridge/Scan', token=admin, expected=(202,))
+    deadline = time.monotonic() + 30
+    status = started
+    while status['Running'] or status['Last'] is None:
+        if time.monotonic() > deadline:
+            raise AssertionError(f'Background scan did not finish: {status}')
+        time.sleep(0.5)
+        status = server.request('GET', '/RetroBridge/Scan', token=admin)
+    if not status['Last']['Published'] or status['Last']['Count'] != 1:
+        raise AssertionError(f'Background scan result: {status}')
+    server.request('GET', '/RetroBridge/Scan', expected=(401,))
+    summary['background_scan'] = True
+
+    # Jellyfin discovers the scheduled task; running it through Jellyfin's task manager scans the library.
+    task = next((t for t in server.request('GET', '/ScheduledTasks', token=admin) if t.get('Key') == 'RetroBridgeScan'), None)
+    if not task or not any(t.get('Type') == 'DailyTrigger' for t in task.get('Triggers', [])):
+        raise AssertionError('RetroBridge scheduled task missing or without its daily trigger')
+    server.request('POST', '/ScheduledTasks/Running/' + task['Id'], token=admin)
+    deadline = time.monotonic() + 60
+    while True:
+        task = server.request('GET', '/ScheduledTasks/' + task['Id'], token=admin)
+        if task['State'] == 'Idle' and task.get('LastExecutionResult'):
+            break
+        if time.monotonic() > deadline:
+            raise AssertionError(f'Scheduled task did not finish: {task}')
+        time.sleep(1)
+    if task['LastExecutionResult']['Status'] != 'Completed':
+        raise AssertionError(f"Scheduled task result: {task['LastExecutionResult']}")
+    summary['jellyfin_scheduled_task'] = True
     summary['scan_filter_download_rescan'] = True
 
     password = secrets.token_urlsafe(24)
@@ -350,7 +381,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Catalog was not restored from its snapshot after restart')
     summary['catalog_persisted_across_restart'] = True
-    after_restart = server.request('POST', '/RetroBridge/Scan', token=admin)
+    after_restart = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Content identity did not survive restart and rescan')
     if after_restart['Hashed'] != 0:
