@@ -51,3 +51,13 @@ def verify_native(url, token, game, executable, core, temp_parent=None):
         if counters != [1, 2]:
             raise AssertionError(f'Expected save counter 1 then 2, observed {counters}')
         return {'frames_per_boot': FRAMES, 'save_counters': counters, 'save_name': save.name, 'core': core.name}
+
+
+if __name__ == '__main__':
+    # Container entry point; the token arrives via RETROBRIDGE_TOKEN, never argv.
+    import json
+    import sys
+    if len(sys.argv) != 5 or not os.environ.get('RETROBRIDGE_TOKEN'):
+        sys.exit('usage: RETROBRIDGE_TOKEN=... native_smoke.py <url> <game-id> <retroarch> <core>')
+    result = verify_native(sys.argv[1], os.environ['RETROBRIDGE_TOKEN'], {'Id': sys.argv[2]}, Path(sys.argv[3]), Path(sys.argv[4]))
+    print(json.dumps(result))

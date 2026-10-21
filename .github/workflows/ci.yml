@@ -27,6 +27,9 @@ jobs:
         if: runner.os != 'Windows'
         run: python scripts/launcher-smoke.py
       - run: python scripts/package-plugin.py
+      - name: Real Jellyfin and headless RetroArch save test (Linux Docker)
+        if: runner.os == 'Linux'
+        run: python scripts/jellyfin-smoke.py --native-linux-docker
       - uses: actions/upload-artifact@v4
         with:
           name: retrobridge-${{ runner.os }}

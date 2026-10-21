@@ -72,9 +72,9 @@ A local dashboard harness can be generated with `python3 scripts/dashboard-harne
 Still required before a usable beta:
 
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
-- Native RetroArch save/restart tests on Windows and Linux.
+- Native RetroArch save/restart tests on Windows.
 - Persistent catalog storage, incremental/background scans, metadata/artwork editing.
 - Per-user game access, device pairing, short-lived single-use launch tickets, and one-click play.
 - Dedicated game UI, installers, repository manifest, and release verification.
 
-See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. Windows/Linux native runs remain open.
+See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. The same test passes on Linux in Docker ([setup and teardown](docs/linux-native-docker.md)). Windows native runs remain open.

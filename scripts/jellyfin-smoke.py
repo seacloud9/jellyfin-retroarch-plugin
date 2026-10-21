@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -22,11 +23,12 @@ from fixture_rom import write_fixture
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_ID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
 # Multi-architecture manifest for the tested Jellyfin 12.1 release.
+LINUX_NATIVE_IMAGE = 'retrobridge-native-linux:local'
 IMAGE = 'jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e'
 
 
-def docker(*args):
-    result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=180)
+def docker(*args, env=None, timeout=180):
+    result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=timeout, env=env)
     if result.returncode:
         raise RuntimeError(f'docker {args[0]} failed: {result.stderr.strip()}')
     return result.stdout.strip()
@@ -35,6 +37,18 @@ def docker(*args):
 def host_url(container):
     port = json.loads(docker('inspect', container))[0]['NetworkSettings']['Ports']['8096/tcp'][0]['HostPort']
     return 'http://127.0.0.1:' + port
+
+
+def verify_native_linux_docker(container, admin, game):
+    """Run native_smoke.py in a headless Linux RetroArch container sharing Jellyfin's network."""
+    docker('build', '-q', '-t', LINUX_NATIVE_IMAGE, '-f', str(REPO / 'docker/native-linux.Dockerfile'), str(REPO / 'docker'), timeout=900)
+    # Sharing the network namespace keeps Jellyfin on loopback, which the companion allows over HTTP.
+    output = docker('run', '--rm', '--label', 'org.retrobridge.smoke=true', '--network', 'container:' + container,
+                    '-e', 'RETROBRIDGE_TOKEN', '--mount', f'type=bind,src={REPO},dst=/repo,readonly', LINUX_NATIVE_IMAGE,
+                    'python3', '/repo/scripts/native_smoke.py', 'http://127.0.0.1:8096', game['Id'],
+                    '/usr/bin/retroarch', '/opt/cores/nestopia_libretro.so',
+                    env={**os.environ, 'RETROBRIDGE_TOKEN': admin}, timeout=600)
+    return {'platform': 'linux-docker', **json.loads(output.splitlines()[-1])}
 
 
 class Server:
@@ -165,6 +179,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native-executable', type=Path, help='Also launch a real RetroArch executable twice (Unix)')
     parser.add_argument('--native-core', type=Path, help='Installed Nestopia core for the native save test')
+    parser.add_argument('--native-linux-docker', action='store_true', help='Also run the native save test in a headless Linux RetroArch container')
     parser.add_argument('--native-temp-parent', type=Path, help='Directory accessible to RetroArch; needed for sandboxed macOS builds')
     args = parser.parse_args()
     if bool(args.native_executable) != bool(args.native_core):
@@ -187,7 +202,9 @@ def main():
         write_fixture(fixtures / 'save-counter.nes')
         started = False
         try:
-            docker('run', '-d', '--name', container, '-p', '127.0.0.1::8096',
+            # On Linux, bind-mounted files would otherwise be root-owned and block temp cleanup.
+            user = ['--user', f'{os.getuid()}:{os.getgid()}'] if sys.platform.startswith('linux') else []
+            docker('run', '-d', '--name', container, '--label', 'org.retrobridge.smoke=true', *user, '-p', '127.0.0.1::8096',
                    '--mount', f'type=bind,src={config},dst=/config',
                    '--mount', f'type=bind,src={fixtures},dst=/games,readonly', IMAGE)
             started = True
@@ -197,6 +214,8 @@ def main():
             if args.native_executable:
                 from native_smoke import verify_native
                 summary['native_emulation'] = verify_native(server.url, admin, game, args.native_executable, args.native_core, args.native_temp_parent)
+            if args.native_linux_docker:
+                summary['native_emulation_linux'] = verify_native_linux_docker(container, admin, game)
             output = REPO / 'artifacts/jellyfin-smoke.json'
             output.write_text(json.dumps(summary, indent=2) + '\n')
             print('PASS: packaged plugin loads, real authentication, scan/filter/download, root revocation, restart and identity', flush=True)
