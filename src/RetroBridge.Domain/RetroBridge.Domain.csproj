@@ -1,1 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Matches the companion's packaged runtimes so locked restore works when publishing it. -->
+    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64;linux-arm64</RuntimeIdentifiers>
+    <!-- Single-file publish adds this analyzer (and its package); enabling it always keeps restores identical and catches single-file issues in normal builds. -->
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+  </PropertyGroup>
+</Project>

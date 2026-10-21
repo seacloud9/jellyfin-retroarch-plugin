@@ -1,4 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Runtimes packaged by scripts/package-companion.py, so the committed lock file stays valid when publishing them. -->
+    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64;linux-arm64</RuntimeIdentifiers>
+    <!-- Single-file publish adds this analyzer (and its package); enabling it always keeps restores identical and catches single-file issues in normal builds. -->
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+  </PropertyGroup>
   <ItemGroup><ProjectReference Include="../RetroBridge.Domain/RetroBridge.Domain.csproj" /></ItemGroup>
 </Project>

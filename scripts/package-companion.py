@@ -56,6 +56,8 @@ def main():
     out = REPO / 'artifacts/companion' / rid
     subprocess.run(['dotnet', 'publish', str(REPO / 'src/RetroBridge.Launcher'), '-c', 'Release', '-r', rid, '--self-contained',
                     '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:DebugType=none',
+                    # The projects declare every packaged runtime, so the committed lock files already cover this one.
+                    '-p:RestoreLockedMode=true',
                     '-p:Version=' + VERSION, '-o', str(out)], check=True)
     windows = rid.startswith('win')
     exe_name = 'RetroBridge.Launcher.exe' if windows else 'RetroBridge.Launcher'
