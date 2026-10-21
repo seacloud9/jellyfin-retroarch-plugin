@@ -49,7 +49,8 @@ def main():
             entry = registered(data)
             if not entry or 'retrobridge' not in entry:
                 raise AssertionError('Handler registration not found')
-            if sys.platform != 'darwin' and (str(data) not in entry or ' open ' not in entry):
+            # Compare the unique temp folder name: Windows may report 8.3 short paths for the same folder.
+            if sys.platform != 'darwin' and (data.parent.name not in entry or ' open ' not in entry):
                 raise AssertionError('Handler command does not pass the link to "open" with the data directory: ' + entry)
         finally:
             print(companion('unregister').strip())
