@@ -36,6 +36,23 @@ object Rules {
     fun validGame(game: Game) = platforms[game.extension] == game.platform && game.size in 0..MAX_CONTENT &&
         game.sha256.length == 64 && game.sha256.all { it in '0'..'9' || it in 'a'..'f' } && game.id == "${game.platform}-${game.sha256}"
 
+    // Preferred cores per platform, best first. Names match RetroArch's Android core files.
+    val preferredCores = mapOf(
+        "nes" to listOf("nestopia", "mesen", "fceumm", "quicknes"),
+        "gb" to listOf("gambatte", "sameboy", "gearboy", "mgba"),
+        "gbc" to listOf("gambatte", "sameboy", "gearboy", "mgba"),
+    )
+
+    // Picks an installed core for a platform from RetroArch's reported core files (names or paths).
+    fun chooseCore(platform: String, installed: List<String>): String? {
+        val files = installed.filter { it.endsWith("_libretro_android.so") || it.endsWith("_libretro.so") }
+        return preferredCores[platform].orEmpty().firstNotNullOfOrNull { name ->
+            files.firstOrNull { it.substringAfterLast('/').startsWith(name + "_libretro") }
+        }
+    }
+
+    fun isCoreFileName(name: String) = Regex("[a-z0-9_]{1,64}_libretro(_android)?\\.so").matches(name)
+
     fun sha256(input: InputStream): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(65536)

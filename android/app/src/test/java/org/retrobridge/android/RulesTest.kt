@@ -43,4 +43,20 @@ class RulesTest {
         assert(!Rules.validGame(game.copy(id = "nes-../../x")))
         assert(!Rules.validGame(game.copy(size = Rules.MAX_CONTENT + 1)))
     }
+
+    @Test fun choosesTheBestInstalledCore() {
+        val installed = listOf("/data/user/0/com.retroarch/cores/fceumm_libretro_android.so", "mgba_libretro_android.so", "readme.txt")
+        assertEquals("/data/user/0/com.retroarch/cores/fceumm_libretro_android.so", Rules.chooseCore("nes", installed))
+        assertEquals("mgba_libretro_android.so", Rules.chooseCore("gbc", installed))
+        assertEquals("nestopia_libretro_android.so", Rules.chooseCore("nes", installed + "nestopia_libretro_android.so"))
+        assertNull(Rules.chooseCore("gb", listOf("fceumm_libretro_android.so")))
+        assertNull(Rules.chooseCore("snes", installed))
+        assertNull(Rules.chooseCore("nes", listOf("nestopia_libretro_android.so.partial")))
+    }
+
+    @Test fun coreNamesCannotEscapeTheCoresFolder() {
+        assert(Rules.isCoreFileName("nestopia_libretro_android.so"))
+        listOf("../evil_libretro_android.so", "nestopia_libretro_android.so/x", "Nestopia_libretro_android.so", "evil.so", "a b_libretro.so")
+            .forEach { assert(!Rules.isCoreFileName(it)) { it } }
+    }
 }

@@ -20,7 +20,8 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Note whether the browser asks before opening RetroBridge, and whether "always allow" sticks.
 - [ ] Make an in-game save (the `save-counter` fixture counts boots), press Home, launch again, and confirm the save survived.
 - [ ] Repeat launch/exit about 10 times. Confirm `/sdcard/RetroBridge/backups/<game id>/` holds at most 5 backups and the save is never empty.
-- [ ] Google Play RetroArch: confirm `RetroActivityFuture` accepts the external launch and the `LIBRETRO` core path is correct (Play builds may store cores differently from the nightly).
+- [ ] Google Play RetroArch: confirm `RetroActivityFuture` accepts the external launch, and check the logcat line `RetroArch reported N cores`. If it says `assuming defaults`, that build lacks the core query and uses the fallback path.
+- [ ] With no GB core installed, launching a Game Boy game shows the "install Gambatte" message instead of a black screen.
 - [ ] Touch controls, a Bluetooth controller, audio, and rotation work in the launched game.
 - [ ] Airplane mode / server offline → a clear error toast, no crash.
 - [ ] Revoke the phone under Dashboard → Devices → the next launch reports that it is no longer paired.

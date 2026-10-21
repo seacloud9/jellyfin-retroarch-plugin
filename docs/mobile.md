@@ -53,12 +53,11 @@ MediaProvider's `Database update failed while renaming …srm.tmp` warning appea
 
 - `MANAGE_EXTERNAL_STORAGE` (All files access) is required because RetroArch only reads shared storage and the backups read RetroArch's save folder. Google Play restricts this permission, so distribution would be by APK or would need a different storage design.
 - Saves use RetroArch's own folder. They are not separated by server and user as on desktop, because Android has no equivalent of `--appendconfig`.
-- Core file names are assumed (`nestopia_libretro_android.so`, `gambatte_libretro_android.so`) and must be installed in RetroArch.
+- Cores are detected through RetroArch's `InstalledCoresReceiver`: the app sends `com.retroarch.QUERY_INSTALLED_CORES`, RetroArch replies with `INSTALLED_CORES_RESULT`, and the app picks the best installed core for the platform (NES: Nestopia, Mesen, FCEUmm, QuickNES; GB/GBC: Gambatte, SameBoy, Gearboy, mGBA). The reply arrives on an exported receiver, so only a well-formed file name is used, resolved inside RetroArch's own `cores/` folder for the current Android user. RetroArch builds that don't answer within 3 s fall back to the default core name. A missing core produces a message naming the core to install.
 - A phone running the app does not listen for remote launches. Launch from the phone's own browser.
 - Only the emulator has been tested. No real phone yet.
 
 ## Suggested next steps
 
 1. **Pending:** test on a real Android phone. The checklist is in [manual-smoke.md](manual-smoke.md#pending-real-android-phone-next).
-2. Detect installed cores via RetroArch's `QUERY_INSTALLED_CORES` broadcast instead of assuming names.
-3. For iOS, prototype in-browser emulation separately.
+2. For iOS, prototype in-browser emulation separately.

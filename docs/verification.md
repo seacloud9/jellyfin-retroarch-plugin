@@ -24,6 +24,7 @@ Recorded October 2, 2026, and updated October 21, 2026, on macOS arm64 using .NE
 | Android companion (Oct 21) | Passed on emulator | `scripts/android-smoke.py --play-page` on the Android 17 arm64 emulator with RetroArch 1.22.2 nightly and real Jellyfin: Quick Connect pairing, ticket launch, save 1 → 2, empty-save restore, replay/hostile rejection, real Chrome Play tap. 49-cycle save stress test clean. 4 Kotlin unit tests; CI builds, tests, and lints the APK. No real phone tested |
 | Link registration (Oct 21) | macOS passed locally | `scripts/link-handler-check.py` registers, inspects, and removes the handler; CI runs it on all three OSes |
 | Incremental scans (Oct 21) | Passed | 3 new tests (unchanged/changed/new files, same-size-and-timestamp limit, restart via snapshot; 44 total). Real Jellyfin: unchanged rescan hashed 0, full rescan hashed 1, first scan after restart hashed 0; dashboard status checked in jsdom |
+| Android core detection (Oct 21) | Passed on emulator | RetroArch's installed-cores query answered with the Nestopia core; Android smoke passed with the detected path. 2 new Kotlin tests (preference order, hostile core names; 6 total) |
 | Plugin packaging | Passed | ZIP contains `Jellyfin.Plugin.RetroBridge.dll` and `RetroBridge.Domain.dll`; SHA-256 sidecar generated |
 
 Build artifacts and browser harness outputs are generated locally under ignored directories and are not committed. CI is configured to upload plugin and companion build artifacts; this record does not assert that hosted CI has run successfully.
