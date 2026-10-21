@@ -36,7 +36,7 @@ internal static class Autostart
         if (OperatingSystem.IsMacOS())
         {
             LinkHandler.TryRun("/bin/launchctl", "bootout", $"gui/{GetUid()}/{Label}");
-            File.Delete(MacAgent);
+            if (File.Exists(MacAgent)) File.Delete(MacAgent);
             return "Autostart disabled and the listener stopped.";
         }
         if (File.Exists(SystemdUnit))
@@ -45,7 +45,8 @@ internal static class Autostart
             File.Delete(SystemdUnit);
             LinkHandler.TryRun("systemctl", "--user", "daemon-reload");
         }
-        File.Delete(XdgAutostart);
+        // File.Delete throws when the folder itself is missing, so check first.
+        if (File.Exists(XdgAutostart)) File.Delete(XdgAutostart);
         return "Autostart disabled.";
     }
 
