@@ -12,32 +12,53 @@ Findings recorded on October 21, 2026. Environment: iPhone 17 Pro simulator (iOS
 - `retrobridge://` has no handler on iOS (`simctl openurl` fails with LaunchServices error 115).
 - The only route that would work is emulation inside the browser (a WebAssembly libretro core on the Play page). Saves would then live in browser storage unless synced to the server. Not started.
 
-## Android: feasible, with one blocking risk
+## Android: companion app (prototype)
 
-What was proven on the emulator using adb in place of a companion app:
+`android/` contains a small Kotlin app with no AndroidX dependencies:
 
-| Step | Result |
+- **Pairing:** enter the server URL and use Quick Connect. The device-bound token is stored in app-private preferences. HTTPS is required, with HTTP allowed only to loopback (for example `adb reverse`), the same rule as desktop.
+- **Launch:** an intent filter for `retrobridge://launch` (`LaunchActivity`, no UI) applies the same strict link rules as desktop. It redeems the ticket with the phone's own token, downloads to `/sdcard/RetroBridge/cache/<game id>.<ext>`, verifies size and SHA-256, and starts `com.retroarch.browser.retroactivity.RetroActivityFuture` with `ROM`, `LIBRETRO`, and `QUITFOCUS=true`.
+- **Save protection:** before each launch, every RetroArch save named after the game ID is copied to `/sdcard/RetroBridge/backups/<game id>/` (last 5 kept). A save found empty is restored from the newest non-empty backup.
+- **Play page:** on Android, Play opens the link even when no computer is listening. iOS still needs a listening computer.
+
+Setup on a phone: install RetroArch, open it once, install the cores (NES: Nestopia; GB/GBC: Gambatte) from its Online Updater, install the RetroBridge APK, allow **All files access**, then pair.
+
+### Verified on the Android 17 emulator (arm64, 16 KB pages)
+
+`scripts/android-smoke.py --play-page` against an isolated real Jellyfin 12.1 container:
+
+| Check | Result |
 |---|---|
-| Install a core without root or UI | ✅ `com.retroarch.browser.debug.CoreSideloadActivity` (exported) with extras `LIBRETRO=<core .so>` and `ROM=<content>` copies the core into RetroArch's private `cores/` folder and starts the game. RetroArch must have been opened once first (first-run setup). |
-| Launch content from another app | ✅ `com.retroarch.browser.retroactivity.RetroActivityFuture` (exported) with `ROM`, `LIBRETRO=/data/user/0/com.retroarch.aarch64/cores/nestopia_libretro_android.so`, and `QUITFOCUS=true` auto-starts the game. The fixture showed its first-boot color. |
-| Clean exit | ✅ With `QUITFOCUS`, pressing Home exits RetroArch and flushes SRAM |
-| Save persistence | ⚠️ The counter went 1 → 2 → 3 across launches, then the `.srm` was **0 bytes** after the next exit |
+| Quick Connect pairing; device appears in `/RetroBridge/Devices` | ✅ |
+| Ticket launch via a real `retrobridge://` intent; fixture save counter 1 → 2 | ✅ |
+| Save truncated to 0 bytes → restored from backup on next launch | ✅ |
+| Replayed ticket and a link with an injected `&server=` rejected; RetroArch not started | ✅ |
+| Real tap on Play in Android Chrome → app → RetroArch boots, save increments | ✅ |
 
-**Blocking risk: save truncation in shared storage.** RetroArch writes saves to `/storage/emulated/0/RetroArch/saves/` and renames a `.tmp` file into place. Android's MediaProvider logged `Database update failed while renaming …save-counter.srm.tmp` on each write, and one exit left a 0-byte save. A concurrent `adb cat` may have raced the write, but data loss cannot be ruled out. Before an Android companion is built, it needs:
+### Save reliability investigation
 
-1. A reproducible test that runs many launch/exit cycles without outside reads, to confirm or clear the truncation.
-2. A save location that avoids shared-storage renames. One option is a CONFIGFILE that points `savefile_directory` at RetroArch's app-specific folder. That replaces the user's whole RetroArch config, unlike the desktop `--appendconfig`, so it needs care.
-3. A save backup before each launch, with restore when the save shrinks to 0 bytes. This is only possible if the companion can read the save folder, which may need storage permissions that Google Play restricts.
+A 0-byte save appeared once during the first spike. It did not recur in 49 later cycles across five scenarios:
 
-Other Android notes:
+| Scenario | Cycles | Result |
+|---|---|---|
+| Launch, exit (Home with QUITFOCUS), read after process exit | 23 | Every save 8192 bytes, counter +1 each time |
+| Reading the save repeatedly during exit | 5 | Intact |
+| Relaunching immediately during exit | 5 | Intact. The relaunch resumes the exiting task instead of booting again |
+| Force-stop 0–1.2 s after leaving | 8 | Intact. QUITFOCUS writes immediately on focus loss |
+| Force-stop mid-game (crash/swipe-away) | 3 | File intact; that session's progress lost (expected) |
 
-- Content must be in shared storage (RetroArch was granted all-files access here). RetroArch cannot read another app's private files, so the companion would have to place ROMs in shared storage or a location RetroArch can read.
-- Per-user/per-server save isolation (as on desktop) is not available without a custom CONFIGFILE.
-- On 16 KB page-size devices (Android 17 emulator), RetroArch's native library runs in compatibility mode and shows a one-time warning.
-- Cores come from RetroArch's Online Updater on real devices; the sideload activity is a debug entry point and may change.
+MediaProvider's `Database update failed while renaming …srm.tmp` warning appeared on every write. It concerns MediaProvider's index, not the file. The original truncation is unexplained, which is why the backup/restore exists.
+
+### Limits
+
+- `MANAGE_EXTERNAL_STORAGE` (All files access) is required because RetroArch only reads shared storage and the backups read RetroArch's save folder. Google Play restricts this permission, so distribution would be by APK or would need a different storage design.
+- Saves use RetroArch's own folder. They are not separated by server and user as on desktop, because Android has no equivalent of `--appendconfig`.
+- Core file names are assumed (`nestopia_libretro_android.so`, `gambatte_libretro_android.so`) and must be installed in RetroArch.
+- A phone running the app does not listen for remote launches. Launch from the phone's own browser.
+- Only the emulator has been tested. No real phone yet.
 
 ## Suggested next steps
 
-1. Run the save truncation stress test on the Android emulator and on a real device.
-2. If saves can be made reliable, build a small Kotlin companion: Quick Connect pairing, `retrobridge://` intent filter and listener, verified download, `RetroActivityFuture` launch.
+1. Test on a real Android phone (Google Play RetroArch is `com.retroarch`).
+2. Detect installed cores via RetroArch's `QUERY_INSTALLED_CORES` broadcast instead of assuming names.
 3. For iOS, prototype in-browser emulation separately.

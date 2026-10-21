@@ -95,6 +95,6 @@ Still required before a usable beta:
 - Packaged companion installers (it currently runs from a .NET build).
 - Dedicated game UI, installers, repository manifest, and release verification.
 
-Phones work as remotes for a listening computer; playing directly on Android or iOS is not supported yet (see [mobile findings](docs/mobile.md)).
+Phones work as remotes for a listening computer. **Android** can also play on the phone itself with the prototype companion in `android/` (build with `./gradlew :app:assembleDebug`). iOS can only act as a remote. See [mobile support](docs/mobile.md).
 
 See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. The same test passes on Linux in Docker ([setup and teardown](docs/linux-native-docker.md)). Windows native runs remain open.

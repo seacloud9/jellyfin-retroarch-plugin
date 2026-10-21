@@ -62,6 +62,15 @@ rm -rf ~/.local/share/RetroBridge             # Linux default data
 rm -rf tests/browser/node_modules             # jsdom for the play-page test
 ```
 
+Android emulator leftovers (from the mobile tests):
+
+```sh
+adb uninstall org.retrobridge.android
+adb uninstall com.retroarch.aarch64          # removes RetroArch, its cores, and its config
+adb shell rm -rf /sdcard/RetroBridge /sdcard/RetroArch /sdcard/Download/nestopia_libretro_android.so /sdcard/Download/save-counter.nes
+rm -rf android/.gradle android/app/build ~/.gradle/caches   # Gradle build output and shared cache
+```
+
 Deleting a data directory also deletes local saves. Revoke a pairing in Jellyfin under Dashboard → Devices.
 
 Verify that nothing remains:
