@@ -27,6 +27,7 @@ Recorded October 2, 2026, and updated October 21, 2026, on macOS arm64 using .NE
 | Android core detection (Oct 21) | Passed on emulator | RetroArch's installed-cores query answered with the Nestopia core; Android smoke passed with the detected path. 2 new Kotlin tests (preference order, hostile core names; 6 total) |
 | Listener autostart (Oct 21) | macOS passed | `jellyfin-smoke.py --os-autostart`: launchd started the listener from the LaunchAgent; a phone-style Play was delivered and launched; `autostart off` unloaded and removed it. A second listener on the same data directory was refused. `link-handler-check.py` checks the autostart entry on all three OSes in CI |
 | Background and scheduled scans (Oct 21) | Passed | API test: 202, status polling, admin-only (45 total). Real Jellyfin: background scan finished and published; Jellyfin listed `RetroBridgeScan` with its daily trigger and ran it to `Completed` via `/ScheduledTasks/Running`; dashboard polling checked in jsdom |
+| Titles (Oct 21) | Passed | 6 title-cleaning cases and an override API test (52 total). Real Jellyfin: override applied, survived restart via XML plugin configuration, and reset |
 | Plugin packaging | Passed | ZIP contains `Jellyfin.Plugin.RetroBridge.dll` and `RetroBridge.Domain.dll`; SHA-256 sidecar generated |
 
 Build artifacts and browser harness outputs are generated locally under ignored directories and are not committed. CI is configured to upload plugin and companion build artifacts; this record does not assert that hosted CI has run successfully.

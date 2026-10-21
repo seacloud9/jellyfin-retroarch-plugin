@@ -11,6 +11,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Non-administrator Jellyfin users allowed to list, launch, and download games. Administrators always may.
     public string[] PlayerUserIds { get; set; } = [];
+
+    // Administrator-chosen titles by content ID; they survive renames and rescans.
+    public TitleOverride[] TitleOverrides { get; set; } = [];
+}
+
+public sealed class TitleOverride
+{
+    public string GameId { get; set; } = "";
+    public string Title { get; set; } = "";
 }
 
 public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages

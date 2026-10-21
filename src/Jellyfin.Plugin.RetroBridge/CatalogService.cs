@@ -16,6 +16,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<LaunchTickets>();
         services.AddSingleton<IPairedDevices, JellyfinPairedDevices>();
         services.AddSingleton<Func<PluginConfiguration>>(() => Plugin.Instance!.Configuration);
+        services.AddSingleton<Action<PluginConfiguration>>(configuration => Plugin.Instance!.UpdateConfiguration(configuration));
     }
 }
 

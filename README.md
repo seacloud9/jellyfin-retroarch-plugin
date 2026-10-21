@@ -28,7 +28,7 @@ The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/
 3. Extract **both DLLs** from the archive into that directory, then restart Jellyfin.
 4. As an administrator, open Dashboard → Plugins → RetroBridge.
 5. Enter absolute game-folder paths **as seen by the Jellyfin server**. Tick the non-administrator users who may play, save, then scan. Container paths must refer to mounted folders.
-6. Search and filter games. Use only games you own or redistributable homebrew.
+6. Search and filter games. Titles are cleaned from file names (`Super_Mario_Bros_(USA)_[!]` becomes *Super Mario Bros*, region *USA*). **Edit title** overrides a title for everyone; leave it empty to restore the file-name title. Use only games you own or redistributable homebrew.
 
 Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Access applies to the whole library; per-game permissions are not implemented. Removing a player takes effect immediately. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
@@ -73,6 +73,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | POST | `/RetroBridge/Scan` | Administrator | Start a background scan (202 with status); `?full=true` rehashes all; `?wait=true` waits and returns count, hashed/reused counts, publication status, and issues; 409 if busy |
 | GET | `/RetroBridge/Scan` | Administrator | Scan status: `Running`, `Processed`, `Last` result, `LastCompleted` |
 | POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
+| POST | `/RetroBridge/Games/{id}/Title` | Administrator | Body `{"Title"}` (≤ 200 chars); empty restores the file-name title |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
 | POST | `/RetroBridge/LaunchTickets/Claim` | Player, as the device | Check in as listening and receive the oldest pending launch for this device (204 when none) |

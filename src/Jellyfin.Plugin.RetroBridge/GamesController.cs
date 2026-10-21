@@ -7,11 +7,12 @@ namespace Jellyfin.Plugin.RetroBridge;
 
 public sealed record TicketRequest(string? DeviceId);
 public sealed record RedeemRequest(string? Ticket);
+public sealed record TitleRequest(string? Title);
 
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, Func<PluginConfiguration> configuration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -21,9 +22,26 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public ActionResult<IEnumerable<Game>> List([FromQuery] string? search, [FromQuery] string? platform)
     {
         if (!CanPlay()) return Forbid();
-        return Ok(catalog.Games.Select(x => x.Game)
+        return Ok(catalog.Games.Select(x => Present(x.Game))
             .Where(x => string.IsNullOrWhiteSpace(search) || x.Title.Contains(search, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(platform) || x.Platform == platform));
+    }
+
+    // Empty or whitespace restores the title derived from the file name.
+    [HttpPost("Games/{id}/Title")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult<Game> SetTitle(string id, [FromBody] TitleRequest request)
+    {
+        var game = catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game;
+        if (game is null) return NotFound();
+        var title = request.Title?.Trim() ?? "";
+        if (title.Length > 200 || title.Any(char.IsControl)) return BadRequest(new { Message = "Use a title of up to 200 characters without control characters." });
+        var config = configuration();
+        var overrides = config.TitleOverrides.Where(x => x.GameId != id).ToList();
+        if (title.Length > 0) overrides.Add(new TitleOverride { GameId = id, Title = title });
+        config.TitleOverrides = overrides.ToArray();
+        saveConfiguration(config);
+        return Ok(Present(game));
     }
 
     [HttpGet("Devices")]
@@ -89,7 +107,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay() || UserId() is not { } user || User.FindFirst(DeviceIdClaim)?.Value is not { Length: > 0 } device) return Forbid();
         var id = tickets.Redeem(request.Ticket ?? "", user, device);
-        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game;
+        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
         // One response for expired, replayed, foreign, and unknown tickets.
         return game is null ? NotFound(new { Message = "Launch ticket is invalid or expired. Start the game again." }) : Ok(game);
     }
@@ -100,7 +118,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay() || UserId() is not { } user || User.FindFirst(DeviceIdClaim)?.Value is not { Length: > 0 } device) return Forbid();
         var id = tickets.Claim(user, device);
-        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game;
+        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
         return game is null ? NoContent() : Ok(game);
     }
 
@@ -121,6 +139,9 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         { return NotFound(new { Message = "Content is unavailable; check the game root and rescan." }); }
     }
+
+    private Game Present(Game game) =>
+        configuration().TitleOverrides.FirstOrDefault(x => x.GameId == game.Id) is { } custom ? game with { Title = custom.Title } : game;
 
     private Guid? UserId() => Guid.TryParse(User.FindFirst(UserIdClaim)?.Value, out var id) && id != Guid.Empty ? id : null;
 

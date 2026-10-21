@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 
 namespace RetroBridge.Domain;
 
-public sealed record Game(string Id, string Title, string Platform, string Extension, long Size, string Sha256);
+public sealed record Game(string Id, string Title, string Platform, string Extension, long Size, string Sha256, string? Region = null);
 // Length and ModifiedTicks (UTC) let later scans skip rehashing unchanged files; -1/0 means unknown.
 public sealed record IndexedGame(Game Game, string Root, string RelativePath, long Length = -1, long ModifiedTicks = 0);
 public sealed record ScanIssue(string Path, string Message);
@@ -17,6 +17,34 @@ public static class Platforms
         ".gbc" => "gbc",
         _ => null
     };
+}
+
+// Readable titles from ROM file names such as "Super_Mario_Bros_(USA)_[!].nes".
+public static partial class Titles
+{
+    private static readonly string[] Regions = ["USA", "Europe", "Japan", "World", "Australia", "Korea", "China", "Brazil", "Canada",
+        "France", "Germany", "Spain", "Italy", "Netherlands", "Sweden", "Asia", "Taiwan", "Hong Kong"];
+
+    public static (string Title, string? Region) FromFileName(string fileName)
+    {
+        var name = fileName.Replace('_', ' ');
+        string? region = null;
+        foreach (System.Text.RegularExpressions.Match tag in TagPattern().Matches(name))
+        {
+            // "(USA, Europe)" → "USA, Europe"; the first tag naming known regions wins.
+            var parts = tag.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (region is null && parts.Length > 0 && parts.All(x => Regions.Contains(x, StringComparer.OrdinalIgnoreCase)))
+                region = string.Join(", ", parts.Select(x => Regions.First(r => r.Equals(x, StringComparison.OrdinalIgnoreCase))));
+        }
+        var title = SpacePattern().Replace(TagPattern().Replace(name, " ").Replace("[", " ").Replace("]", " "), " ").Trim(' ', '-', '.');
+        return (title.Length == 0 ? fileName : title, region);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[\(\[]([^\)\]]*)[\)\]]")]
+    private static partial System.Text.RegularExpressions.Regex TagPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\s+")]
+    private static partial System.Text.RegularExpressions.Regex SpacePattern();
 }
 
 public static class SafeContent
@@ -102,7 +130,8 @@ public sealed class CatalogScanner
                             }
                             progress?.Invoke(hashed + reused);
                             var id = platform + "-" + hash;
-                            games.TryAdd(id, new(new(id, Path.GetFileNameWithoutExtension(path), platform, extension, info.Length, hash), root, relative, info.Length, modified));
+                            var (title, region) = Titles.FromFileName(Path.GetFileNameWithoutExtension(path));
+                            games.TryAdd(id, new(new(id, title, platform, extension, info.Length, hash, region), root, relative, info.Length, modified));
                         }
                         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                         { issues.Add(new(path, ex.Message)); }

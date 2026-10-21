@@ -371,6 +371,10 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     server.request('POST', config_path, config, admin)
     summary['root_revocation'] = True
 
+    # Title overrides live in Jellyfin's XML plugin configuration; they must survive the restart below.
+    renamed = server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Title', {'Title': 'Save Counter Fixture'}, admin)
+    if renamed['Title'] != 'Save Counter Fixture':
+        raise AssertionError(f'Title override not applied: {renamed}')
     docker('restart', container)
     # A restart reassigns the ephemeral host port.
     server.url = host_url(container)
@@ -378,14 +382,21 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     admin = server.login('retrobridge-admin', admin_password)
     if server.request('GET', config_path, token=admin)['GameRoots'] != ['/games']:
         raise AssertionError('Plugin configuration did not survive restart')
-    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+    # Compare everything except the overridden title.
+    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games', token=admin)] != [dict(g, Title=None) for g in games]:
         raise AssertionError('Catalog was not restored from its snapshot after restart')
     summary['catalog_persisted_across_restart'] = True
     after_restart = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
-    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+    # Compare everything except the overridden title.
+    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games', token=admin)] != [dict(g, Title=None) for g in games]:
         raise AssertionError('Content identity did not survive restart and rescan')
     if after_restart['Hashed'] != 0:
         raise AssertionError(f'First scan after restart should be incremental: {after_restart}')
+    titles = [g['Title'] for g in server.request('GET', '/RetroBridge/Games?search=fixture', token=admin)]
+    if titles != ['Save Counter Fixture']:
+        raise AssertionError(f'Title override did not survive restart: {titles}')
+    server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Title', {'Title': ''}, admin)
+    summary['title_override_persisted'] = True
     summary['restart_configuration_identity'] = True
     return admin, game
 

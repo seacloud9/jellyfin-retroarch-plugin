@@ -25,6 +25,7 @@ public sealed class ApiTests : IDisposable
     private readonly CatalogService _catalog = new();
     private readonly PluginConfiguration _configuration = new();
     private readonly TestTime _time = new();
+    private int _saves;
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
     {
@@ -34,6 +35,7 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton(new LaunchTickets(_time));
             services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
+            services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
             services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("test", _ => { });
             services.AddAuthorization(options => options.AddPolicy(Policies.RequiresElevation, policy => policy.RequireAuthenticatedUser().RequireRole("Administrator")));
             services.AddControllers().AddApplicationPart(typeof(GamesController).Assembly);
@@ -245,6 +247,27 @@ public sealed class ApiTests : IDisposable
             Assert.Equal(game.Id, Assert.Single(_catalog.Games).Game.Id);
             using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Scan", "User", Player, "d"));
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task AdministratorsCanOverrideTitlesForEveryone()
+    {
+        var (root, game) = await ScanFixture();
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        try
+        {
+            async Task<HttpResponseMessage> Rename(string role, object body) =>
+                await _client.SendAsync(As(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/Title", role, Player, "d", body));
+            using (var denied = await Rename("User", new { Title = "Hacked" })) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var invalid = await Rename("Administrator", new { Title = "bad\ntitle" })) Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var renamed = await Rename("Administrator", new { Title = "  Alpha Quest  " })) Assert.Equal("Alpha Quest", (await renamed.Content.ReadFromJsonAsync<Game>())!.Title);
+            Assert.Equal(1, _saves);
+            using (var listed = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games?search=quest", "User", Player, "d")))
+                Assert.Equal("Alpha Quest", Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).Title);
+            using (var reset = await Rename("Administrator", new { Title = " " })) Assert.Equal("Alpha", (await reset.Content.ReadFromJsonAsync<Game>())!.Title);
+            Assert.Empty(_configuration.TitleOverrides);
         }
         finally { Directory.Delete(root, true); }
     }

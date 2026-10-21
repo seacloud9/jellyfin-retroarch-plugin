@@ -72,7 +72,7 @@
     list.replaceChildren();
     games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
       var li = document.createElement('li'), name = document.createElement('span'), tag = document.createElement('small'), play = document.createElement('button');
-      name.textContent = g.Title; tag.textContent = g.Platform.toUpperCase(); name.append(tag);
+      name.textContent = g.Title; tag.textContent = g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : ''); name.append(tag);
       play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title);
       play.addEventListener('click', function () { launch(g, play); });
       li.append(name, play); list.append(li);

@@ -32,11 +32,22 @@
       list.replaceChildren();
       games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
         var li = document.createElement('li');
-        var title = document.createElement('p'); title.textContent = g.Title + ' · ' + g.Platform.toUpperCase();
+        var title = document.createElement('p'); title.textContent = g.Title + ' · ' + g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : '');
         var code = document.createElement('code'); code.textContent = g.Id;
-        li.append(title, code); list.append(li);
+        var edit = document.createElement('button'); edit.type = 'button'; edit.className = 'raised'; edit.setAttribute('is', 'emby-button'); edit.textContent = 'Edit title';
+        edit.addEventListener('click', function () { rename(g); });
+        li.append(title, code, edit); list.append(li);
       });
       if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = 'No games found. Save folders and scan to populate the library.'; list.append(empty); }
+    }
+    // Empty input restores the title derived from the file name.
+    async function rename(game) {
+      var title = window.prompt('Title for ' + game.Title + ' (leave empty to use the file name):', game.Title);
+      if (title === null) return;
+      try {
+        await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Games/' + encodeURIComponent(game.Id) + '/Title'), data: JSON.stringify({ Title: title }), contentType: 'application/json', dataType: 'json' });
+        status('Title saved.'); await loadGames();
+      } catch (_) { status('Could not save the title. Use up to 200 characters.'); }
     }
     async function loadGames() {
       games = await ApiClient.getJSON(ApiClient.getUrl('RetroBridge/Games')); render();

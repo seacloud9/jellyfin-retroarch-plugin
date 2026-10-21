@@ -160,3 +160,15 @@ public sealed class CatalogTests : IDisposable
 
     public void Dispose() => Directory.Delete(_root, true);
 }
+
+public sealed class TitleTests
+{
+    [Theory]
+    [InlineData("Super_Mario_Bros_(USA)_[!]", "Super Mario Bros", "USA")]
+    [InlineData("Tetris (World) (Rev 1)", "Tetris", "World")]
+    [InlineData("Pokemon - Red Version (USA, Europe) (SGB Enhanced)", "Pokemon - Red Version", "USA, Europe")]
+    [InlineData("Zelda (Beta) (japan)", "Zelda", "Japan")]
+    [InlineData("homebrew-demo", "homebrew-demo", null)]
+    [InlineData("(USA)", "(USA)", "USA")]
+    public void CleansFileNames(string file, string title, string? region) => Assert.Equal((title, region), Titles.FromFileName(file));
+}
