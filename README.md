@@ -69,6 +69,8 @@ Other commands: `launch <data-dir> <ticket> <retroarch> <core>` redeems a ticket
 
 The launcher requires HTTPS except for loopback development servers and refuses redirects. It supports Jellyfin base paths, validates cached/downloaded content against SHA-256, limits content to 64 MiB, cleans up interrupted download files, and uses structured process arguments without a shell.
 
+**Save sync:** battery saves (`.srm`, `.sav`, `.rtc`; up to 1 MiB) sync through your Jellyfin server, so progress follows you between computers. The companion downloads a newer server copy before RetroArch starts, if the local save hasn't changed, and uploads changes after RetroArch exits. If both sides changed, the copy just played wins and the other is kept beside it as `<save>.server-r<revision>`. The server also keeps the last 5 versions of each save. Being offline never blocks play; unsynced changes upload at the next launch. Save states are not synced, because they depend on the core. The Android app does not sync saves yet.
+
 Saves and states live under `RetroBridge-data/saves/<server hash>/<user ID>/<platform>/<content hash>/`. A per-game lock prevents simultaneous launches against the same save directory. The companion waits for RetroArch to exit and returns its exit code. Its appended configuration disables config saving on exit to avoid saving these overrides over your existing RetroArch configuration. Changing cores can make save states incompatible; core-specific compatibility is not yet enforced.
 
 ## API
@@ -86,6 +88,8 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | GET | `/RetroBridge/Games/{id}/Art` | Player | Cached box art (PNG), 404 if none |
 | PUT / DELETE | `/RetroBridge/Games/{id}/Art` | Administrator | Upload a raw PNG/JPEG body (≤ 4 MiB; 400 wrong type, 413 too large) / remove the upload |
 | POST | `/RetroBridge/Artwork` | Administrator | Fetch missing art now, retrying misses (202; `?wait=true` returns counts); 409 if turned off |
+| GET | `/RetroBridge/Games/{id}/Saves` | Player | The caller's server saves for the game (name, SHA-256, size, revision, modified, device) |
+| GET / PUT | `/RetroBridge/Games/{id}/Saves/{name}` | Player | Download / upload a battery save; PUT needs `?baseRevision=` (0 for new) and returns 409 with the current copy on conflict |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
 | POST | `/RetroBridge/LaunchTickets/Claim` | Player, as the device | Check in as listening and receive the oldest pending launch for this device (204 when none) |

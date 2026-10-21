@@ -36,6 +36,7 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton(new LaunchTickets(_time));
             services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton(_artwork);
+            services.AddSingleton(new SaveStore(Path.Combine(Path.GetTempPath(), "retrobridge-saves-" + Guid.NewGuid().ToString("N"))));
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
             services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("test", _ => { });
@@ -396,6 +397,48 @@ public sealed class ApiTests : IDisposable
             var (status, type, bytes) = await Get();
             Assert.Equal((HttpStatusCode.OK, "image/png", (byte)1), (status, type, bytes[^1]));
             using (var gone = await _client.SendAsync(As(HttpMethod.Delete, $"/RetroBridge/Games/{game.Id}/Art", "Administrator", Player, "d"))) Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task SavesSyncPerUserWithRevisionsAndConflicts()
+    {
+        var (root, game) = await ScanFixture();
+        var other = Guid.NewGuid();
+        _configuration.PlayerUserIds = [Player.ToString("N"), other.ToString("N")];
+        var name = game.Id + ".srm";
+        try
+        {
+            async Task<(HttpStatusCode Status, System.Text.Json.JsonElement Body)> Put(byte[] data, long baseRevision, Guid? user = null, string file = "")
+            {
+                var request = As(HttpMethod.Put, $"/RetroBridge/Games/{game.Id}/Saves/{(file.Length > 0 ? file : name)}?baseRevision={baseRevision}", "User", user ?? Player, "retrobridge-a");
+                request.Content = new ByteArrayContent(data);
+                using var response = await _client.SendAsync(request);
+                var text = await response.Content.ReadAsStringAsync();
+                return (response.StatusCode, text.Length > 0 ? System.Text.Json.JsonDocument.Parse(text).RootElement.Clone() : default);
+            }
+            var first = await Put([1, 2, 3], 0);
+            Assert.Equal((HttpStatusCode.OK, 1L), (first.Status, first.Body.GetProperty("revision").GetInt64()));
+            var stale = await Put([9, 9], 0);
+            Assert.Equal((HttpStatusCode.Conflict, 1L), (stale.Status, stale.Body.GetProperty("revision").GetInt64()));
+            Assert.Equal(2L, (await Put([4, 5, 6], 1)).Body.GetProperty("revision").GetInt64());
+
+            using (var download = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Saves/{name}", "User", Player, "d")))
+                Assert.Equal(new byte[] { 4, 5, 6 }, await download.Content.ReadAsByteArrayAsync());
+            using (var list = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Saves", "User", Player, "d")))
+                Assert.Contains("\"device\":\"retrobridge-a\"", await list.Content.ReadAsStringAsync());
+
+            // Saves are per user, names are restricted, and size is limited.
+            using (var foreign = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Saves/{name}", "User", other, "d")))
+                Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await Put([1], 0, file: game.Id + ".state")).Status);
+            Assert.Equal(HttpStatusCode.BadRequest, (await Put([1], 0, file: "..%2F..%2Fevil.srm")).Status);
+            Assert.Equal(HttpStatusCode.BadRequest, (await Put(new byte[SaveSync.MaxBytes + 1], 2)).Status);
+
+            // A restricted game's saves are hidden like the game itself.
+            _configuration.RestrictedGames = [new GameAccess { GameId = game.Id, PlayerUserIds = [other.ToString("N")] }];
+            Assert.Equal(HttpStatusCode.NotFound, (await Put([7], 2)).Status);
         }
         finally { Directory.Delete(root, true); }
     }

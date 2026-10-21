@@ -27,6 +27,7 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Revoke the phone under Dashboard → Devices → the next launch reports that it is no longer paired.
 - [ ] Remove the player in the plugin settings → the next launch reports that access was removed.
 - [ ] Battery optimization or an app killed in the background does not lose a save that was already written.
+- [ ] Note: the Android app does not sync saves with the server yet; desktop saves do not reach the phone.
 
 ## Pending: other manual checks
 

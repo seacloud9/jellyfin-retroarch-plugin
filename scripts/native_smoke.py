@@ -22,13 +22,31 @@ FRAMES = 300
 
 
 def read_save(data):
-    saves = list((data / 'saves').rglob('*.srm'))
+    saves = [p for p in (data / 'saves').rglob('*.srm')]
     if len(saves) != 1:
         raise AssertionError(f'Expected one emulator save file, found {len(saves)}')
     raw = saves[0].read_bytes()
     if raw[:4] != b'RB01':
         raise AssertionError('Save file is missing the fixture signature')
     return saves[0], raw[4]
+
+
+def server_counter(url, token, game_id):
+    """Boot counter in the user's server copy of the save (0 when there is none), so runs can follow other devices."""
+    import urllib.request
+    import urllib.error
+    request = urllib.request.Request(url.rstrip('/') + f'/RetroBridge/Games/{game_id}/Saves/{game_id}.srm',
+                                     headers={'Authorization': f'MediaBrowser Client="RetroBridge Smoke", Device="Native", DeviceId="retrobridge-native-smoke", Version="0.1.0", Token="{token}"'})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            data = response.read()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return 0
+        raise
+    if data[:4] != b'RB01':
+        raise AssertionError('Server save is missing the fixture signature')
+    return data[4]
 
 
 def verify_native(url, token, game, executable, core, temp_parent=None):
@@ -44,19 +62,27 @@ def verify_native(url, token, game, executable, core, temp_parent=None):
         wrapper = workspace / 'retroarch-wrapper.sh'
         wrapper.write_text(f'#!/bin/sh\nexec {shlex.quote(str(executable.resolve()))} --max-frames={FRAMES} "$@"\n')
         wrapper.chmod(0o700)
-        data = workspace / 'data'
         env = {**os.environ, 'RETROBRIDGE_TOKEN': token}
+        # Two data directories stand in for two computers of the same user; server save sync carries progress between them.
+        computer_a, computer_b = workspace / 'computer-a', workspace / 'computer-b'
+        start = server_counter(url, token, game['Id'])
         counters = []
-        for boot in (1, 2):
+        for boot, data in enumerate((computer_a, computer_a, computer_b, computer_a), start=1):
             result = subprocess.run([*companion_command(), url, game['Id'], str(wrapper), str(core.resolve()), str(data)],
                                     env=env, capture_output=True, text=True, timeout=180)
             if result.returncode:
                 raise AssertionError(f'Launch {boot} failed ({result.returncode}): {result.stderr.strip()[-500:]}')
+            if 'Save sync skipped' in result.stderr:
+                raise AssertionError(f'Save sync failed on launch {boot}: {result.stderr.strip()[-300:]}')
             save, counter = read_save(data)
             counters.append(counter)
-        if counters != [1, 2]:
-            raise AssertionError(f'Expected save counter 1 then 2, observed {counters}')
-        return {'frames_per_boot': FRAMES, 'save_counters': counters, 'save_name': save.name, 'core': core.name}
+        expected = [start + n for n in (1, 2, 3, 4)]
+        if counters != expected:
+            raise AssertionError(f'Expected save counter {expected} (A, A, B, A; server started at {start}), observed {counters}')
+        if server_counter(url, token, game['Id']) != start + 4:
+            raise AssertionError('Server save was not updated after the last launch')
+        return {'frames_per_boot': FRAMES, 'save_counters': counters, 'server_counter_before': start, 'synced_between_computers': True,
+                'save_name': save.name, 'core': core.name}
 
 
 if __name__ == '__main__':

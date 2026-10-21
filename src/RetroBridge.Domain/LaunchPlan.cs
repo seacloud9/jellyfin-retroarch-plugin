@@ -32,6 +32,9 @@ public static class LaunchPlan
         if (saveDirectory.IndexOfAny(['"', '\r', '\n']) >= 0)
             throw new ArgumentException("Save path cannot contain quotes or newlines.");
         var path = saveDirectory.Replace('\\', '/');
-        return $"savefile_directory = \"{path}\"\nsavestate_directory = \"{path}\"\nconfig_save_on_exit = \"false\"\n";
+        // No per-core subfolders: save sync expects <save directory>/<game id>.srm.
+        return $"savefile_directory = \"{path}\"\nsavestate_directory = \"{path}\"\nconfig_save_on_exit = \"false\"\n" +
+            "sort_savefiles_enable = \"false\"\nsort_savefiles_by_content_enable = \"false\"\n" +
+            "sort_savestates_enable = \"false\"\nsort_savestates_by_content_enable = \"false\"\n";
     }
 }

@@ -65,3 +65,30 @@ public sealed class LaunchTests
     [InlineData("not a url")]
     public void LaunchLinkRejectsAnythingButAnOpaqueTicket(string link) => Assert.Null(LaunchLink.ParseTicket(link));
 }
+
+public sealed class SaveSyncTests
+{
+    private static ServerSave Server(string sha, long revision) => new("nes-x.srm", sha, 8192, revision, DateTimeOffset.UnixEpoch, "retrobridge-a");
+
+    [Theory]
+    [InlineData(null, null, null, null, null, SyncAction.None)]
+    [InlineData(null, null, null, "s1", 1L, SyncAction.Download)]        // fresh device
+    [InlineData("l1", null, null, null, null, SyncAction.Upload)]        // first upload
+    [InlineData("s1", null, null, "s1", 1L, SyncAction.None)]            // identical without history
+    [InlineData("a", "a", 1L, "b", 2L, SyncAction.Download)]             // another device played
+    [InlineData("b", "a", 1L, "a", 1L, SyncAction.Upload)]               // played here
+    [InlineData("b", "a", 1L, "c", 2L, SyncAction.Conflict)]             // played in both places
+    [InlineData("l1", null, null, "s1", 1L, SyncAction.Conflict)]        // existing local save meets server save
+    public void Decides(string? local, string? lastSha, long? lastRevision, string? serverSha, long? serverRevision, SyncAction expected) =>
+        Assert.Equal(expected, SaveSync.Decide(local, lastSha is null ? null : new(lastSha, lastRevision!.Value),
+            serverSha is null ? null : Server(serverSha, serverRevision!.Value)));
+
+    [Theory]
+    [InlineData("nes-abc.srm", true)]
+    [InlineData("nes-abc.rtc", true)]
+    [InlineData("nes-abc.state", false)]
+    [InlineData("nes-other.srm", false)]
+    [InlineData("../nes-abc.srm", false)]
+    [InlineData("nes-abc.srm/../../x", false)]
+    public void OnlyBatterySavesForTheGameAreSynced(string name, bool expected) => Assert.Equal(expected, SaveSync.IsSyncedName("nes-abc", name));
+}

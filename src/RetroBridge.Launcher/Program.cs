@@ -325,12 +325,91 @@ async Task<int> Launch(HttpClient client, Uri server, Guid userId, Game game, st
     var config = Path.Combine(saveDirectory, "retrobridge.cfg");
     await File.WriteAllTextAsync(config, LaunchPlan.Configuration(saveDirectory), ct);
     var plan = LaunchPlan.Create(Path.GetFullPath(executable), Path.GetFullPath(core), content, config);
+    await SyncSaves(client, game, saveDirectory, beforeLaunch: true);
     Console.WriteLine($"Starting {game.Title}. Saves: {saveDirectory}");
     using var process = Process.Start(plan) ?? throw new InvalidOperationException("RetroArch could not be started.");
     // Keep the game lock until RetroArch exits, even if the CLI receives Ctrl+C.
     await process.WaitForExitAsync();
     Console.WriteLine($"RetroArch exited with code {process.ExitCode}.");
+    await SyncSaves(client, game, saveDirectory, beforeLaunch: false);
     return process.ExitCode;
+}
+
+// Syncs battery saves with the server. Never blocks play: failures are logged and retried at the next launch,
+// because sync.json only advances after the server has confirmed a transfer. Conflicts keep both copies; the
+// local save (the one just played) wins and the other is kept beside it as <name>.server-r<revision>.
+async Task SyncSaves(HttpClient client, Game game, string saveDirectory, bool beforeLaunch)
+{
+    var statePath = Path.Combine(saveDirectory, "sync.json");
+    try
+    {
+        var state = File.Exists(statePath) ? JsonSerializer.Deserialize<Dictionary<string, SyncedSave>>(await File.ReadAllTextAsync(statePath, ct), json) ?? [] : [];
+        var route = "RetroBridge/Games/" + Uri.EscapeDataString(game.Id) + "/Saves";
+        using var listing = await client.GetAsync(route, ct);
+        if (listing.StatusCode == HttpStatusCode.NotFound) return; // server without save sync, or game no longer visible
+        listing.EnsureSuccessStatusCode();
+        var server = (await listing.Content.ReadFromJsonAsync<ServerSave[]>(json, ct) ?? []).ToDictionary(x => x.Name);
+        var names = server.Keys.Concat(SaveSync.Extensions.Select(ext => game.Id + ext).Where(n => File.Exists(Path.Combine(saveDirectory, n)))).Distinct();
+        foreach (var name in names.Where(n => SaveSync.IsSyncedName(game.Id, n)))
+        {
+            var local = Path.Combine(saveDirectory, name);
+            string? localSha = null;
+            if (File.Exists(local))
+                await using (var stream = File.OpenRead(local)) localSha = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct));
+            // An empty local file is never authoritative.
+            if (localSha is not null && new FileInfo(local).Length == 0) localSha = null;
+            server.TryGetValue(name, out var remote);
+            state.TryGetValue(name, out var last);
+            var action = SaveSync.Decide(localSha, last, remote);
+            if (action == SyncAction.Conflict)
+            {
+                await DownloadSave(client, route, remote!, Path.Combine(saveDirectory, $"{name}.server-r{remote!.Revision}"));
+                Console.WriteLine($"Save conflict for {name}: kept this computer's copy; the other device's copy is saved as {name}.server-r{remote.Revision}.");
+                state[name] = new(localSha!, remote.Revision);
+                action = beforeLaunch ? SyncAction.None : SyncAction.Upload;
+            }
+            if (action == SyncAction.Download && beforeLaunch)
+            {
+                await DownloadSave(client, route, remote!, local);
+                state[name] = new(remote!.Sha256, remote.Revision);
+                Console.WriteLine($"Downloaded {name} (revision {remote.Revision}) from the server.");
+            }
+            // Pending uploads (for example after playing offline) go out before or after a launch.
+            else if (action == SyncAction.Upload)
+            {
+                var baseRevision = state.TryGetValue(name, out var known) ? known.Revision : 0;
+                using var body = new ByteArrayContent(await File.ReadAllBytesAsync(local, ct));
+                using var put = await client.PutAsync($"{route}/{Uri.EscapeDataString(name)}?baseRevision={baseRevision}", body, ct);
+                if (put.StatusCode == HttpStatusCode.Conflict)
+                {
+                    Console.WriteLine($"Save {name} changed on the server meanwhile; it will be reconciled at the next launch.");
+                    continue;
+                }
+                put.EnsureSuccessStatusCode();
+                var saved = await put.Content.ReadFromJsonAsync<ServerSave>(json, ct) ?? throw new InvalidOperationException("Server returned no save.");
+                state[name] = new(saved.Sha256, saved.Revision);
+                Console.WriteLine($"Uploaded {name} (revision {saved.Revision}).");
+            }
+            else if (action == SyncAction.None && localSha is not null && remote is not null) state[name] = new(localSha, remote.Revision);
+        }
+        await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(state, json), ct);
+    }
+    catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidOperationException or TaskCanceledException)
+    {
+        Console.Error.WriteLine($"Save sync skipped ({ex.Message}); your local save is unchanged and will sync next time.");
+    }
+}
+
+async Task DownloadSave(HttpClient client, string route, ServerSave save, string destination)
+{
+    using var response = await client.GetAsync($"{route}/{Uri.EscapeDataString(save.Name)}", ct);
+    response.EnsureSuccessStatusCode();
+    var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+    if (bytes.Length > SaveSync.MaxBytes || Convert.ToHexStringLower(SHA256.HashData(bytes)) != save.Sha256)
+        throw new IOException($"Downloaded save {save.Name} failed verification.");
+    var temporary = destination + ".download";
+    await File.WriteAllBytesAsync(temporary, bytes, ct);
+    File.Move(temporary, destination, true);
 }
 
 static async Task<bool> Verified(string path, Game game, CancellationToken ct)

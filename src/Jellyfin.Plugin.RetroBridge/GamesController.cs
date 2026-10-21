@@ -14,7 +14,7 @@ public sealed record AccessRequest(string[]? PlayerUserIds);
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, SaveStore saves, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -107,6 +107,41 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
             return Accepted();
         }
         return await artwork.FetchMissingAsync(games, true, cancellationToken) is { } result ? Ok(result) : Conflict(new { Message = "Artwork is already being fetched." });
+    }
+
+    // Server copies of the caller's battery saves for a game, used by companions to sync between devices.
+    [HttpGet("Games/{id}/Saves")]
+    public IActionResult ListSaves(string id)
+    {
+        if (!CanPlay() || UserId() is not { } user) return Forbid();
+        return Visible().Any(x => x.Game.Id == id) ? Ok(saves.List(user, id)) : NotFound();
+    }
+
+    [HttpGet("Games/{id}/Saves/{name}")]
+    public IActionResult DownloadSave(string id, string name)
+    {
+        if (!CanPlay() || UserId() is not { } user) return Forbid();
+        if (Visible().All(x => x.Game.Id != id) || saves.Open(user, id, name) is not { } stream) return NotFound();
+        Response.Headers.CacheControl = "no-store";
+        return File(stream, "application/octet-stream", name);
+    }
+
+    // ?baseRevision is the revision the upload was based on (0 for none); 409 returns the current server copy.
+    [HttpPut("Games/{id}/Saves/{name}")]
+    [RequestSizeLimit(SaveSync.MaxBytes + 1024)]
+    public async Task<IActionResult> UploadSave(string id, string name, [FromQuery] long baseRevision, CancellationToken cancellationToken)
+    {
+        if (!CanPlay() || UserId() is not { } user) return Forbid();
+        if (Visible().All(x => x.Game.Id != id)) return NotFound();
+        if (!SaveSync.IsSyncedName(id, name)) return BadRequest(new { Message = "Only battery saves named after the game can be synced." });
+        try
+        {
+            var result = await saves.WriteAsync(user, id, name, Request.Body, baseRevision, User.FindFirst(DeviceIdClaim)?.Value ?? "", cancellationToken);
+            return result.Saved is { } saved ? Ok(saved) : Conflict(result.Current);
+        }
+        catch (InvalidDataException ex) { return BadRequest(new { ex.Message }); }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        { return StatusCode(StatusCodes.Status413PayloadTooLarge, new { Message = "Saves must be 1 MiB or smaller." }); }
     }
 
     [HttpGet("Devices")]

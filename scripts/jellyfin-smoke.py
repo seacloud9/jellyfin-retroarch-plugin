@@ -218,6 +218,41 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
         summary['os_autostart_listener'] = sys.platform
 
 
+def verify_save_conflict(server, token, game, workspace, stub_core):
+    """Two computers change the same save between syncs: the one played last wins and the other copy is kept."""
+    env = {**os.environ, 'RETROBRIDGE_TOKEN': token}
+    def play(data):
+        result = subprocess.run([*companion_command(), server.url, game['Id'], '/usr/bin/true', str(stub_core), str(data)],
+                                capture_output=True, text=True, timeout=60, env=env)
+        if result.returncode or 'Save sync skipped' in result.stderr:
+            raise AssertionError('Launch failed: ' + (result.stderr or result.stdout).strip()[-300:])
+        return result.stdout
+    def save_dir(data):
+        return next((data / 'saves').glob(f"*/*/nes/{game['Sha256']}"))
+    a, b = workspace / 'sync-a', workspace / 'sync-b'
+    name = game['Id'] + '.srm'
+    play(a)
+    (save_dir(a) / name).write_bytes(b'from computer A')
+    if 'Uploaded' not in play(a):
+        raise AssertionError('A did not upload its save')
+    play(b)
+    if (save_dir(b) / name).read_bytes() != b'from computer A':
+        raise AssertionError('B did not receive the save')
+    (save_dir(a) / name).write_bytes(b'A plays again')
+    play(a)
+    (save_dir(b) / name).write_bytes(b'B played offline')
+    output = play(b)
+    kept = list(save_dir(b).glob(name + '.server-r*'))
+    if 'conflict' not in output or len(kept) != 1 or kept[0].read_bytes() != b'A plays again' or (save_dir(b) / name).read_bytes() != b'B played offline':
+        raise AssertionError('Conflict did not keep both copies: ' + output)
+    play(a)
+    if (save_dir(a) / name).read_bytes() != b'B played offline':
+        raise AssertionError('A did not receive the conflict winner')
+    history = server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Saves', token=token)
+    if history[0]['Revision'] != 3:  # A, A again, then B's conflict winner
+        raise AssertionError(f'Unexpected server revision: {history}')
+
+
 def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary, os_handler=False):
     """Quick Connect pairing, ticket issue/redeem, replay/device binding, and access revocation."""
     if os.name == 'nt':
@@ -273,6 +308,8 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
             if rejected.returncode != 1 or 'invalid or expired' not in rejected.stderr:
                 raise AssertionError(f'{name} ticket was not rejected')
         verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary)
+        verify_save_conflict(server, ordinary, game, Path(directory), stub_core)
+        summary['save_sync_conflict'] = True
 
         # Per-game access: limit the game to someone else, then restore it.
         someone = server.request('POST', '/Users/New', {'Name': 'retrobridge-other', 'Password': secrets.token_urlsafe(24)}, admin)['Id']
