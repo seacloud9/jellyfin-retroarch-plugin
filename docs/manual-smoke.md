@@ -33,6 +33,7 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Windows: native RetroArch save/restart (CI covers only build, tests, and link registration).
 - [ ] Windows: pressing Play in Edge/Chrome launches through the registered `retrobridge://` handler.
 - [ ] Linux desktop: pressing Play in Firefox/Chrome launches through the `.desktop` handler.
+- [ ] `autostart on`, then sign out and back in (or reboot) on macOS, Windows, and Linux: the device shows *(ready)* on the play page without running anything by hand. On Windows, confirm no console window appears.
 - [ ] Real jellyfin-web: dashboard page layout, keyboard navigation, player checkboxes, and error messages (checked only in jsdom).
 - [ ] Controller input, audio, window focus, and normal exit on macOS/Windows/Linux with a playable homebrew game.
 - [ ] Missing executable/core and corrupt content produce actionable messages in the desktop companion log.

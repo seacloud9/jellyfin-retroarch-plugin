@@ -42,7 +42,24 @@ try
                     settings.Cores.GetValueOrDefault(game.Platform) ?? throw new InvalidOperationException($"No core is configured for {game.Platform}. Run configure --core {game.Platform}=<path>.")));
             }
         case ["listen", .. var rest]:
-            return await Listen(DataDirectory(Option(rest, "--data")));
+            {
+                var background = rest.Contains("--background");
+                return await Listen(DataDirectory(Option(rest.Where(x => x != "--background").ToArray(), "--data")), background);
+            }
+        case ["autostart", "on", .. var rest]:
+            {
+                var data = DataDirectory(Option(rest, "--data"));
+                LocalSettings.Load(data);
+                Pairing.Load(data);
+                Console.WriteLine(Autostart.Enable(data));
+                return 0;
+            }
+        case ["autostart", "off"]:
+            Console.WriteLine(Autostart.Disable());
+            return 0;
+        case ["autostart", "status"]:
+            Console.WriteLine(Autostart.Status());
+            return 0;
         case ["launch", var data, var ticket, var executable, var core]:
             return await Redeem(data, ticket, _ => (executable, core));
         case ["register", .. var rest]:
@@ -75,6 +92,7 @@ try
             Console.WriteLine("  RetroBridge.Launcher register [--data <dir>]      (handle retrobridge:// links from the play page)");
             Console.WriteLine("  RetroBridge.Launcher unregister");
             Console.WriteLine("  RetroBridge.Launcher listen [--data <dir>]          (start games sent from any browser, including phones)");
+            Console.WriteLine("  RetroBridge.Launcher autostart on|off|status [--data <dir>]   (listen automatically at login)");
             Console.WriteLine("  RetroBridge.Launcher open <retrobridge://launch?ticket=...> [--data <dir>]");
             Console.WriteLine("  RetroBridge.Launcher launch <data-directory> <ticket> <retroarch-path> <core-path>");
             Console.WriteLine($"Default data directory: {DataDirectory(null)}");
@@ -122,23 +140,62 @@ async Task<int> Redeem(string data, string ticket, Func<Game, (string Executable
 }
 
 // Checks in with the server and launches games sent to this device, one at a time, until cancelled.
-async Task<int> Listen(string data)
+// In background mode (autostart) output goes to listener.log, and conditions that a restart cannot fix
+// (unpaired, access removed) end with exit code 0 so the service manager does not restart it in a loop.
+async Task<int> Listen(string data, bool background)
 {
+    if (background)
+    {
+        Directory.CreateDirectory(data);
+        var logPath = Path.Combine(data, "listener.log");
+        if (File.Exists(logPath) && new FileInfo(logPath).Length > 1024 * 1024) File.Delete(logPath);
+        var log = new StreamWriter(logPath, true) { AutoFlush = true };
+        Console.SetOut(log); Console.SetError(log);
+    }
     var pairing = Pairing.Load(data);
     var settings = LocalSettings.Load(data);
+    // One listener per data directory, so an autostarted and a manual listener cannot both claim launches.
+    FileStream listenerLock;
+    try { listenerLock = new FileStream(Path.Combine(data, "listener.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+    catch (IOException)
+    {
+        Console.Error.WriteLine("Another listener is already running for this data directory.");
+        return background ? 0 : 1;
+    }
+    using var _ = listenerLock;
     var server = ParseServer(pairing.Server);
     using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
     client.Timeout = TimeSpan.FromSeconds(30);
-    var user = await CurrentUser(client);
-    Console.WriteLine($"Listening for games sent to this device ({pairing.DeviceId}). Press Ctrl+C to stop.");
     var delay = TimeSpan.FromSeconds(3);
+    Guid user;
+    // At login the network may not be up yet; keep retrying instead of exiting.
+    while (true)
+    {
+        try { user = await CurrentUser(client); break; }
+        catch (HttpRequestException ex) when (ex.StatusCode is null or >= HttpStatusCode.InternalServerError)
+        {
+            Console.Error.WriteLine($"[{DateTimeOffset.Now:u}] Server unreachable ({ex.Message}); retrying.");
+            await Task.Delay(delay, ct);
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            Console.Error.WriteLine("This device is no longer paired. Run pair again.");
+            return background ? 0 : 1;
+        }
+    }
+    delay = TimeSpan.FromSeconds(3);
+    Console.WriteLine($"[{DateTimeOffset.Now:u}] Listening for games sent to this device ({pairing.DeviceId}). Press Ctrl+C to stop.");
     while (!ct.IsCancellationRequested)
     {
         try
         {
             using var response = await client.PostAsync("RetroBridge/LaunchTickets/Claim", null, ct);
-            if (response.StatusCode == HttpStatusCode.Unauthorized) throw new InvalidOperationException("This device is no longer paired. Run pair again.");
-            if (response.StatusCode == HttpStatusCode.Forbidden) throw new InvalidOperationException("Your account no longer has RetroBridge access.");
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                Console.Error.WriteLine(response.StatusCode == HttpStatusCode.Unauthorized ? "This device is no longer paired. Run pair again." : "Your account no longer has RetroBridge access.");
+                return background ? 0 : 1;
+            }
             response.EnsureSuccessStatusCode();
             delay = TimeSpan.FromSeconds(3);
             if (response.StatusCode == HttpStatusCode.OK && await response.Content.ReadFromJsonAsync<Game>(json, ct) is { } game)

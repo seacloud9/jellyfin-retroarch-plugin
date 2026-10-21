@@ -8,7 +8,7 @@ internal static class LinkHandler
     private const string MacBundleId = "org.retrobridge.launcher";
     private const string LsRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
-    private static string AppHost
+    internal static string AppHost
     {
         get
         {
@@ -18,7 +18,7 @@ internal static class LinkHandler
     }
 
     // shared/Microsoft.NETCore.App/<version>/ is three levels below the .NET root. Links start without the user's shell environment.
-    private static string DotnetRoot => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
+    internal static string DotnetRoot => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
 
     public static string Register(string data)
     {
@@ -122,7 +122,7 @@ internal static class LinkHandler
         return "Registered retrobridge:// via " + desktop + (defaulted ? "" : " (xdg-mime not found; set it as the default handler for x-scheme-handler/retrobridge)");
     }
 
-    private static void Run(string file, params string[] arguments)
+    internal static void Run(string file, params string[] arguments)
     {
         var start = new ProcessStartInfo(file) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
@@ -132,7 +132,7 @@ internal static class LinkHandler
         if (process.ExitCode != 0) throw new InvalidOperationException($"{Path.GetFileName(file)} failed: {error.Trim()}");
     }
 
-    private static bool TryRun(string file, params string[] arguments)
+    internal static bool TryRun(string file, params string[] arguments)
     {
         try { Run(file, arguments); return true; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }

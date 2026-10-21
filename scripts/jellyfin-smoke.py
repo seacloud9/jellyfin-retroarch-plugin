@@ -118,7 +118,7 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
     if clicked['devices'] != [device] or clicked['games'] != ['save-counter'] or clicked['errors']:
         raise AssertionError(f'Unexpected play page state: {clicked}')
     log = data / 'launcher.log'
-    if os_handler:
+    if os_handler is True:
         # Real OS dispatch: the registered handler receives the link exactly as a browser would hand it over.
         registered = companion('register', '--data', str(data))
         if registered.returncode:
@@ -153,12 +153,21 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
     idle = play_page('--mobile')
     if idle['link'] or 'not listening' not in idle['status']:
         raise AssertionError(f'Phone without a listener: {idle}')
-    listener = subprocess.Popen(['dotnet', str(LAUNCHER), 'listen', '--data', str(data)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    autostart = os_handler == 'autostart'
+    listener_log = data / 'listener.log'
+    if autostart:
+        # The OS service manager (launchd/systemd) starts the listener, exactly as at login.
+        enabled = companion('autostart', 'on', '--data', str(data))
+        if enabled.returncode:
+            raise AssertionError('autostart on failed: ' + enabled.stderr.strip())
+        listener = None
+    else:
+        listener = subprocess.Popen(['dotnet', str(LAUNCHER), 'listen', '--data', str(data)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         deadline = time.monotonic() + 30
         while not all(d['Listening'] for d in server.request('GET', '/RetroBridge/Devices', token=ordinary)):
-            if time.monotonic() > deadline or listener.poll() is not None:
-                raise AssertionError('Listener never checked in')
+            if time.monotonic() > deadline or (listener and listener.poll() is not None):
+                raise AssertionError('Listener never checked in' + (': ' + listener_log.read_text()[-300:] if listener_log.exists() else ''))
             time.sleep(1)
         remote = play_page('--mobile')
         if remote['link'] or not remote['status'].startswith('Sent to'):
@@ -168,11 +177,28 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
         while 'RetroArch exited with code 0' not in output:
             if time.monotonic() > deadline:
                 raise AssertionError('Listener did not launch the game: ' + output[-300:])
-            output += listener.stdout.readline()
+            if listener:
+                output += listener.stdout.readline()
+            else:
+                time.sleep(1)
+                output = listener_log.read_text() if listener_log.exists() else ''
+        if listener:
+            # A second listener on the same data directory must refuse to start.
+            second = companion('listen', '--data', str(data))
+            if second.returncode != 1 or 'already running' not in second.stderr:
+                raise AssertionError('A second listener was allowed to run')
     finally:
-        listener.terminate()
-        listener.wait(timeout=10)
+        if listener:
+            listener.terminate()
+            listener.wait(timeout=10)
+        else:
+            companion('autostart', 'off')
+            status = companion('autostart', 'status').stdout
+            if 'off' not in status:
+                raise AssertionError('Autostart still on after disabling: ' + status)
     summary['remote_launch_from_phone'] = True
+    if autostart:
+        summary['os_autostart_listener'] = sys.platform
 
 
 def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary, os_handler=False):
@@ -337,6 +363,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native-executable', type=Path, help='Also launch a real RetroArch executable twice (Unix)')
     parser.add_argument('--native-core', type=Path, help='Installed Nestopia core for the native save test')
+    parser.add_argument('--os-autostart', action='store_true', help='Run the remote-launch listener through the real login autostart (launchd/systemd), then disable it')
     parser.add_argument('--os-link-handler', action='store_true', help='Register the real retrobridge:// handler for this user during the test, then unregister it')
     parser.add_argument('--native-linux-docker', action='store_true', help='Also run the native save test in a headless Linux RetroArch container')
     parser.add_argument('--native-temp-parent', type=Path, help='Directory accessible to RetroArch; needed for sandboxed macOS builds')
@@ -369,7 +396,7 @@ def main():
             started = True
             server = Server(host_url(container))
             print('Testing real Jellyfin at ' + server.url, flush=True)
-            admin, game = verify_server(server, container, fixtures, summary, args.os_link_handler)
+            admin, game = verify_server(server, container, fixtures, summary, 'autostart' if args.os_autostart else args.os_link_handler)
             if args.native_executable:
                 from native_smoke import verify_native
                 summary['native_emulation'] = verify_native(server.url, admin, game, args.native_executable, args.native_core, args.native_temp_parent)

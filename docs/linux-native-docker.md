@@ -57,6 +57,7 @@ One-click play leftovers (the smoke tests unregister their handler and use tempo
 
 ```sh
 RetroBridge.Launcher unregister              # if you registered the link handler yourself
+RetroBridge.Launcher autostart off           # if you enabled the login listener
 rm -rf ~/Library/Application\ Support/RetroBridge   # macOS default data: pairing token, settings, cache, saves
 rm -rf ~/.local/share/RetroBridge             # Linux default data
 rm -rf tests/browser/node_modules             # jsdom for the play-page test

@@ -1,4 +1,4 @@
-"""Register and unregister the per-user retrobridge:// handler on this OS and inspect what was written.
+"""Register/unregister the per-user retrobridge:// handler and login autostart on this OS; inspect what was written.
 
 Uses placeholder pairing/settings in a temporary data directory; nothing is launched.
 """
@@ -56,7 +56,40 @@ def main():
             print(companion('unregister').strip())
         if registered(data) is not None:
             raise AssertionError('Handler still registered after unregister')
-    print('PASS: per-user link handler registered with the expected command and removed cleanly')
+        check_autostart(data)
+    print('PASS: per-user link handler and login autostart registered with the expected commands and removed cleanly')
+
+
+def autostart_entry():
+    if sys.platform == 'win32':
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
+                return winreg.QueryValueEx(key, 'RetroBridge Listener')[0]
+        except FileNotFoundError:
+            return None
+    if sys.platform == 'darwin':
+        agent = Path.home() / 'Library/LaunchAgents/org.retrobridge.listener.plist'
+        return agent.read_text() if agent.exists() else None
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    for candidate in (config / 'systemd/user/retrobridge-listener.service', config / 'autostart/retrobridge-listener.desktop'):
+        if candidate.exists():
+            return candidate.read_text()
+    return None
+
+
+def check_autostart(data):
+    if autostart_entry() is not None:
+        sys.exit('Login autostart is already enabled for this user; refusing to overwrite it.')
+    print(companion('autostart', 'on', '--data', str(data)).strip())
+    try:
+        entry = autostart_entry()
+        if not entry or 'listen' not in entry or '--background' not in entry or data.parent.name not in entry:
+            raise AssertionError('Autostart entry does not run "listen --background" for the data directory: ' + str(entry))
+    finally:
+        print(companion('autostart', 'off').strip())
+    if autostart_entry() is not None or 'off' not in companion('autostart', 'status'):
+        raise AssertionError('Autostart still enabled after disabling')
 
 
 if __name__ == '__main__':
