@@ -32,7 +32,7 @@ The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/
 
 Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Access applies to the whole library; per-game permissions are not implemented. Removing a player takes effect immediately. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
-Scans rehash supported files and publish a new in-memory catalog only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Rescan after changing game files. Large libraries and incremental scans are later work.
+Scans hash only new or changed files, identified by size and modification time; **Full rescan** (`POST /RetroBridge/Scan?full=true`) rehashes everything. A new catalog is published only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Rescan after changing game files. Background scanning for very large libraries is later work.
 
 ## Play (one click)
 
@@ -70,7 +70,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | Method | Route | Access | Behavior |
 |---|---|---|---|
 | GET | `/RetroBridge/Games?search=...&platform=nes` | Player | Catalog metadata without server paths |
-| POST | `/RetroBridge/Scan` | Administrator | Scan saved folders; returns count, publication status, and issues; 409 if busy |
+| POST | `/RetroBridge/Scan` | Administrator | Scan saved folders (`?full=true` rehashes all); returns count, hashed/reused counts, publication status, and issues; 409 if busy |
 | POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
@@ -90,7 +90,7 @@ Still required before a usable beta:
 
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
 - Native RetroArch save/restart tests on Windows.
-- Incremental/background scans, metadata/artwork editing.
+- Background scans, metadata/artwork editing.
 - Per-game permissions, artwork, and a play page integrated into Jellyfin's own navigation.
 - Packaged companion installers (it currently runs from a .NET build).
 - Dedicated game UI, installers, repository manifest, and release verification.

@@ -46,11 +46,11 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
 
     [HttpPost("Scan")]
     [Authorize(Policy = Policies.RequiresElevation)]
-    public async Task<IActionResult> Scan(CancellationToken cancellationToken)
+    public async Task<IActionResult> Scan([FromQuery] bool full, CancellationToken cancellationToken)
     {
-        var result = await catalog.ScanAsync(configuration().GameRoots.ToArray(), cancellationToken);
+        var result = await catalog.ScanAsync(configuration().GameRoots.ToArray(), cancellationToken, full);
         if (result is null) return Conflict(new { Message = "A scan is already running." });
-        return Ok(new { Count = result.Games.Count, Published = result.Issues.Count == 0, result.Issues });
+        return Ok(new { Count = result.Games.Count, Published = result.Issues.Count == 0, result.Hashed, result.Reused, result.Issues });
     }
 
     // Issues a ticket for the caller's paired companion device; the browser never sees a device credential.

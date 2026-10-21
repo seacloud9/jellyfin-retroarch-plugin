@@ -34,12 +34,12 @@ public sealed class CatalogService
 
     public IReadOnlyList<IndexedGame> Games => Volatile.Read(ref _games);
 
-    public async Task<ScanResult?> ScanAsync(string[] roots, CancellationToken cancellationToken)
+    public async Task<ScanResult?> ScanAsync(string[] roots, CancellationToken cancellationToken, bool full = false)
     {
         if (!await _scanLock.WaitAsync(0, cancellationToken)) return null;
         try
         {
-            var result = await Task.Run(() => new CatalogScanner().ScanAsync(roots, cancellationToken), cancellationToken);
+            var result = await Task.Run(() => new CatalogScanner().ScanAsync(roots, cancellationToken, full ? null : Games), cancellationToken);
             // A failed or cancelled scan must not erase the previous catalog.
             if (result.Issues.Count == 0)
             {

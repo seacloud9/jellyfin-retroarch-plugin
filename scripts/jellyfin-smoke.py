@@ -285,9 +285,15 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     except urllib.error.HTTPError as error:
         raise AssertionError(f'Launcher-style authorization rejected: {error.code}') from None
     summary['launcher_token_header'] = True
-    server.request('POST', '/RetroBridge/Scan', token=admin)
+    rescan = server.request('POST', '/RetroBridge/Scan', token=admin)
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Rescan changed identity or duplicated content')
+    if (rescan['Hashed'], rescan['Reused']) != (0, 1):
+        raise AssertionError(f'Unchanged rescan should reuse the hash: {rescan}')
+    full = server.request('POST', '/RetroBridge/Scan?full=true', token=admin)
+    if (full['Hashed'], full['Reused']) != (1, 0):
+        raise AssertionError(f'Full rescan should rehash: {full}')
+    summary['incremental_scan'] = True
     summary['scan_filter_download_rescan'] = True
 
     password = secrets.token_urlsafe(24)
@@ -318,9 +324,11 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Catalog was not restored from its snapshot after restart')
     summary['catalog_persisted_across_restart'] = True
-    server.request('POST', '/RetroBridge/Scan', token=admin)
+    after_restart = server.request('POST', '/RetroBridge/Scan', token=admin)
     if server.request('GET', '/RetroBridge/Games', token=admin) != games:
         raise AssertionError('Content identity did not survive restart and rescan')
+    if after_restart['Hashed'] != 0:
+        raise AssertionError(f'First scan after restart should be incremental: {after_restart}')
     summary['restart_configuration_identity'] = True
     return admin, game
 

@@ -109,5 +109,54 @@ public sealed class CatalogTests : IDisposable
         Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
     }
 
+    [Fact]
+    public async Task RescansOnlyHashNewOrChangedFiles()
+    {
+        await Write("one.nes", "first"); await Write("two.gb", "second");
+        var scanner = new CatalogScanner();
+        var first = await scanner.ScanAsync([_root]);
+        Assert.Equal((2, 0), (first.Hashed, first.Reused));
+
+        var unchanged = await scanner.ScanAsync([_root], default, first.Games);
+        Assert.Equal((0, 2), (unchanged.Hashed, unchanged.Reused));
+        Assert.Equal(first.Games, unchanged.Games);
+
+        var edited = Path.Combine(_root, "one.nes");
+        await File.WriteAllTextAsync(edited, "first, revised");
+        File.SetLastWriteTimeUtc(edited, DateTime.UtcNow.AddMinutes(1));
+        await Write("three.gbc", "third");
+        var changed = await scanner.ScanAsync([_root], default, unchanged.Games);
+        Assert.Equal((2, 1), (changed.Hashed, changed.Reused));
+        Assert.Contains(changed.Games, x => x.RelativePath == "one.nes" && x.Game.Sha256 != first.Games.Single(g => g.RelativePath == "one.nes").Game.Sha256);
+    }
+
+    [Fact]
+    public async Task SameSizeAndTimestampEditsNeedAFullRescan()
+    {
+        await Write("same.nes", "aaaa");
+        var path = Path.Combine(_root, "same.nes");
+        var stamp = File.GetLastWriteTimeUtc(path);
+        var scanner = new CatalogScanner();
+        var first = await scanner.ScanAsync([_root]);
+        await File.WriteAllTextAsync(path, "bbbb");
+        File.SetLastWriteTimeUtc(path, stamp);
+        // Indistinguishable without hashing: the stale hash is kept (downloads then fail verification).
+        Assert.Equal(first.Games, (await scanner.ScanAsync([_root], default, first.Games)).Games);
+        Assert.NotEqual(first.Games[0].Game.Sha256, (await scanner.ScanAsync([_root])).Games[0].Game.Sha256);
+    }
+
+    [Fact]
+    public async Task IncrementalStateSurvivesRestartThroughTheSnapshot()
+    {
+        await Write("kept.nes"); await Write("also.gb", "gb");
+        var snapshot = Path.Combine(_root, "data", "catalog.json");
+        await new CatalogService(snapshot).ScanAsync([_root], default);
+        var restarted = new CatalogService(snapshot);
+        var rescan = (await restarted.ScanAsync([_root], default))!;
+        Assert.Equal((0, 2), (rescan.Hashed, rescan.Reused));
+        var full = (await restarted.ScanAsync([_root], default, full: true))!;
+        Assert.Equal((2, 0), (full.Hashed, full.Reused));
+    }
+
     public void Dispose() => Directory.Delete(_root, true);
 }

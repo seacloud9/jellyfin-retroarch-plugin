@@ -3,9 +3,10 @@ using System.Security.Cryptography;
 namespace RetroBridge.Domain;
 
 public sealed record Game(string Id, string Title, string Platform, string Extension, long Size, string Sha256);
-public sealed record IndexedGame(Game Game, string Root, string RelativePath);
+// Length and ModifiedTicks (UTC) let later scans skip rehashing unchanged files; -1/0 means unknown.
+public sealed record IndexedGame(Game Game, string Root, string RelativePath, long Length = -1, long ModifiedTicks = 0);
 public sealed record ScanIssue(string Path, string Message);
-public sealed record ScanResult(IReadOnlyList<IndexedGame> Games, IReadOnlyList<ScanIssue> Issues);
+public sealed record ScanResult(IReadOnlyList<IndexedGame> Games, IReadOnlyList<ScanIssue> Issues, int Hashed = 0, int Reused = 0);
 
 public static class Platforms
 {
@@ -48,8 +49,13 @@ public static class SafeContent
 
 public sealed class CatalogScanner
 {
-    public async Task<ScanResult> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default)
+    // With a previous catalog, files whose size and modification time are unchanged keep their hash.
+    // Downloads are still checksum-verified by the companion, so a missed change fails safely.
+    public async Task<ScanResult> ScanAsync(IEnumerable<string> roots, CancellationToken cancellationToken = default, IEnumerable<IndexedGame>? previous = null)
     {
+        var known = (previous ?? []).Where(x => x.Length >= 0)
+            .GroupBy(x => (x.Root, x.RelativePath)).ToDictionary(x => x.Key, x => x.First());
+        int hashed = 0, reused = 0;
         var games = new Dictionary<string, IndexedGame>(StringComparer.Ordinal);
         var issues = new List<ScanIssue>();
         foreach (var configuredRoot in roots.Distinct(StringComparer.Ordinal))
@@ -80,11 +86,22 @@ public sealed class CatalogScanner
                             var extension = Path.GetExtension(path).ToLowerInvariant();
                             var platform = Platforms.FromExtension(extension);
                             if (platform is null) continue;
-                            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true);
-                            var size = stream.Length;
-                            var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
+                            var info = new FileInfo(path);
+                            var modified = info.LastWriteTimeUtc.Ticks;
+                            string hash;
+                            if (known.TryGetValue((root, relative), out var prior) && prior.Length == info.Length && prior.ModifiedTicks == modified && prior.Game.Platform == platform)
+                            {
+                                hash = prior.Game.Sha256;
+                                reused++;
+                            }
+                            else
+                            {
+                                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true);
+                                hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
+                                hashed++;
+                            }
                             var id = platform + "-" + hash;
-                            games.TryAdd(id, new(new(id, Path.GetFileNameWithoutExtension(path), platform, extension, size, hash), root, relative));
+                            games.TryAdd(id, new(new(id, Path.GetFileNameWithoutExtension(path), platform, extension, info.Length, hash), root, relative, info.Length, modified));
                         }
                         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                         { issues.Add(new(path, ex.Message)); }
@@ -94,6 +111,6 @@ public sealed class CatalogScanner
                 { issues.Add(new(directory, ex.Message)); }
             }
         }
-        return new(games.Values.OrderBy(x => x.Game.Title, StringComparer.OrdinalIgnoreCase).ToArray(), issues);
+        return new(games.Values.OrderBy(x => x.Game.Title, StringComparer.OrdinalIgnoreCase).ToArray(), issues, hashed, reused);
     }
 }

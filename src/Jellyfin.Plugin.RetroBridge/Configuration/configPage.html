@@ -9,7 +9,9 @@
       <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
     </form>
-    <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button></p>
+    <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button>
+    <button is="emby-button" id="FullScan" type="button" class="raised">Full rescan</button></p>
+    <p>Scans re-hash only new or changed files. Use a full rescan if files were replaced without changing their size and timestamp.</p>
     <p id="ScanStatus" role="status" aria-live="polite"></p>
     <h2>Game library</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
@@ -64,15 +66,17 @@
         await ApiClient.updatePluginConfiguration(pluginId, config); status('Settings saved. Scan to update the library.');
       } catch (_) { status('Could not save settings.'); }
     });
-    page.querySelector('#ScanGames').addEventListener('click', async function () {
-      this.disabled = true; status('Scanning and hashing games…');
+    async function scan(button, full) {
+      button.disabled = true; status(full ? 'Hashing every game…' : 'Scanning for new or changed games…');
       try {
-        var result = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Scan'), dataType: 'json' });
-        status(result.Published ? result.Count + ' games indexed.' : 'Scan was not published; previous catalog retained. ' + result.Issues.map(function (x) { return x.Path + ': ' + x.Message; }).join('; '));
+        var result = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Scan', full ? { full: true } : {}), dataType: 'json' });
+        status(result.Published ? result.Count + ' games indexed (' + result.Hashed + ' hashed, ' + result.Reused + ' unchanged).' : 'Scan was not published; previous catalog retained. ' + result.Issues.map(function (x) { return x.Path + ': ' + x.Message; }).join('; '));
         await loadGames();
       } catch (_) { status('Scan failed or another scan is running. Check server logs and retry.'); }
-      finally { this.disabled = false; }
-    });
+      finally { button.disabled = false; }
+    }
+    page.querySelector('#ScanGames').addEventListener('click', function () { scan(this, false); });
+    page.querySelector('#FullScan').addEventListener('click', function () { scan(this, true); });
     page.querySelector('#GameSearch').addEventListener('input', render);
     page.querySelector('#GamePlatform').addEventListener('change', render);
   }());
