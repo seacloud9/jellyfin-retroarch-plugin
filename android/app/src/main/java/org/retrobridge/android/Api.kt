@@ -19,16 +19,19 @@ class Api(server: String, private val deviceId: String, private val token: Strin
         connection.connectTimeout = 15_000
         connection.readTimeout = 60_000
         connection.requestMethod = method
-        val device = Build.MODEL.filter { it.isLetterOrDigit() }.ifEmpty { "Android" }
-        connection.setRequestProperty("Authorization",
-            "MediaBrowser Client=\"RetroBridge Android\", Device=\"$device\", DeviceId=\"$deviceId\", Version=\"0.1.0\"" +
-                (token?.let { ", Token=\"$it\"" } ?: ""))
+        connection.setRequestProperty("Authorization", authorization())
         if (body != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
             connection.outputStream.use { it.write(body.toString().toByteArray()) }
         }
         return connection
+    }
+
+    private fun authorization(): String {
+        val device = Build.MODEL.filter { it.isLetterOrDigit() }.ifEmpty { "Android" }
+        return "MediaBrowser Client=\"RetroBridge Android\", Device=\"$device\", DeviceId=\"$deviceId\", Version=\"0.1.0\"" +
+            (token?.let { ", Token=\"$it\"" } ?: "")
     }
 
     private fun json(method: String, path: String, body: JSONObject? = null): String? {
@@ -49,6 +52,47 @@ class Api(server: String, private val deviceId: String, private val token: Strin
 
     fun redeem(ticket: String): Game = game(JSONObject(json("POST", "RetroBridge/LaunchTickets/Redeem", JSONObject().put("Ticket", ticket))!!))
     fun claim(): Game? = json("POST", "RetroBridge/LaunchTickets/Claim")?.let { game(JSONObject(it)) }
+
+    private fun savesRoute(gameId: String) = "RetroBridge/Games/" + java.net.URLEncoder.encode(gameId, "UTF-8") + "/Saves"
+
+    // null when the server has no save sync or the game is not visible to this user.
+    fun listSaves(gameId: String): List<ServerSave>? = try {
+        val array = org.json.JSONArray(json("GET", savesRoute(gameId)) ?: "[]")
+        (0 until array.length()).map { array.getJSONObject(it) }.map { ServerSave(it.getString("Name"), it.getString("Sha256"), it.getLong("Size"), it.getLong("Revision")) }
+    } catch (e: HttpStatusException) { if (e.status == 404) null else throw e }
+
+    fun downloadSave(gameId: String, save: ServerSave): ByteArray {
+        val connection = open("GET", savesRoute(gameId) + "/" + java.net.URLEncoder.encode(save.name, "UTF-8"))
+        try {
+            if (connection.responseCode != 200) throw HttpStatusException(connection.responseCode)
+            // Bounded read (InputStream.readNBytes needs API 33).
+            val bytes = connection.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(16384)
+                while (out.size() <= SaveSync.MAX_BYTES) { val n = input.read(buffer); if (n < 0) break; out.write(buffer, 0, n) }
+                out.toByteArray()
+            }
+            if (bytes.size > SaveSync.MAX_BYTES || Rules.sha256(bytes.inputStream()) != save.sha256) throw IOException("Downloaded save ${save.name} failed verification.")
+            return bytes
+        } finally { connection.disconnect() }
+    }
+
+    // null on 409: the server moved on; the next sync reconciles.
+    fun uploadSave(gameId: String, name: String, bytes: ByteArray, baseRevision: Long): ServerSave? {
+        val connection = URL(base + savesRoute(gameId) + "/" + java.net.URLEncoder.encode(name, "UTF-8") + "?baseRevision=$baseRevision").openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = false
+        connection.requestMethod = "PUT"
+        connection.doOutput = true
+        connection.setRequestProperty("Authorization", authorization())
+        connection.setRequestProperty("Content-Type", "application/octet-stream")
+        try {
+            connection.outputStream.use { it.write(bytes) }
+            if (connection.responseCode == 409) return null
+            if (connection.responseCode != 200) throw HttpStatusException(connection.responseCode)
+            val o = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            return ServerSave(o.getString("Name"), o.getString("Sha256"), o.getLong("Size"), o.getLong("Revision"))
+        } finally { connection.disconnect() }
+    }
 
     // Streams to a temporary file, enforces the expected size, and only moves verified content into place.
     fun download(game: Game, destination: File) {

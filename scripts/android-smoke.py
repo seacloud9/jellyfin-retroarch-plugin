@@ -50,6 +50,23 @@ def view(link, *extra):
     adb('shell', 'am start -a android.intent.action.VIEW -d ' + shlex.quote(link) + ''.join(' ' + shlex.quote(e) for e in extra))
 
 
+def play_button():
+    """Screen centre of the play page's Play button, found by its accessible label via UI Automator."""
+    import re
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        adb('shell', 'uiautomator', 'dump', '/sdcard/rb-ui.xml', check=False)
+        ui = adb('shell', 'cat', '/sdcard/rb-ui.xml', check=False)
+        # The button, not the "Play on" device label: exact text "Play" or the accessible name "Play <title>".
+        match = re.search(r'(?:text="Play"|content-desc="Play (?!on)[^"]+")[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', ui)
+        if match:
+            x1, y1, x2, y2 = map(int, match.groups())
+            return str((x1 + x2) // 2), str((y1 + y2) // 2)
+        adb('shell', 'input', 'swipe', '540', '1800', '540', '900', '300')  # scroll the grid into view
+        time.sleep(2)
+    raise AssertionError('Play button not found on the play page')
+
+
 def retroarch_running(package):
     return bool(adb('shell', 'pidof', package, check=False))
 
@@ -189,6 +206,37 @@ def main():
                     raise AssertionError(f'{name} link started RetroArch')
             summary['replayed_and_hostile_links_rejected'] = True
 
+            # Save sync: the phone uploads when the app opens, and pulls another device's newer save before launching.
+            save_name = game['Id'] + '.srm'
+            def server_save():
+                listed = server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Saves', token=player)
+                if not listed:
+                    return 0, None
+                data = server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Saves/' + save_name, token=player, raw=True)
+                return listed[0]['Revision'], data[4]
+            def open_app_and_wait(expected_counter):
+                adb('shell', 'am', 'start', '-n', f'{APP}/.MainActivity')
+                deadline = time.monotonic() + 60
+                while server_save()[1] != expected_counter:
+                    if time.monotonic() > deadline:
+                        raise AssertionError(f'Phone did not upload counter {expected_counter}; server has {server_save()}')
+                    time.sleep(2)
+                adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+            phone_counter = save_state(game)[1][1]
+            open_app_and_wait(phone_counter)
+            revision, _ = server_save()
+            desktop = bytearray(8192)
+            desktop[0:4], desktop[4] = b'RB01', 40
+            import urllib.request
+            upload = urllib.request.Request(server.url + '/RetroBridge/Games/' + game['Id'] + '/Saves/' + save_name + f'?baseRevision={revision}',
+                                            data=bytes(desktop), method='PUT', headers={'Authorization': server.client + f', Token="{player}"', 'Content-Type': 'application/octet-stream'})
+            urllib.request.urlopen(upload, timeout=20).read()
+            play_once(package, ticket())
+            if save_state(game)[1] != (8192, 41):
+                raise AssertionError(f'Phone did not continue the desktop save: {save_state(game)[1]}')
+            open_app_and_wait(41)
+            summary['save_sync'] = {'phone_uploaded': phone_counter, 'desktop_counter': 40, 'phone_booted_to': 41, 'server_after_phone': 41}
+
             if args.play_page:
                 adb('logcat', '-c')
                 helper = workspace / 'rb-session.html'
@@ -198,7 +246,7 @@ def main():
                 before = save_state(game)[1][1]
                 adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', f'http://127.0.0.1:{port}/web/rb-session.html', 'com.android.chrome')
                 time.sleep(10)
-                adb('shell', 'input', 'tap', '918', '1342')
+                adb('shell', 'input', 'tap', *play_button())
                 deadline = time.monotonic() + 60
                 while not retroarch_running(package):
                     if time.monotonic() > deadline:

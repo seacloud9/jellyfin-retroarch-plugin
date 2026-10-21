@@ -45,6 +45,7 @@ class MainActivity : Activity() {
         status = TextView(this).apply { setPadding(0, pad, 0, 0); setTextIsSelectable(true) }
         layout.addView(status)
         setContentView(layout)
+        if (Store(this).pairing != null) SyncJobService.schedule(this)
         // Debug builds accept a server extra so the device smoke test can start pairing without typing.
         if (BuildConfig.DEBUG) intent.getStringExtra("server")?.let { server.setText(it); pair(it) }
     }
@@ -53,6 +54,12 @@ class MainActivity : Activity() {
         super.onResume()
         storage.visibility = if (Environment.isExternalStorageManager()) android.view.View.GONE else android.view.View.VISIBLE
         if (!pairing) showState()
+        // Upload saves made since the last launch whenever the app comes to the front.
+        val current = Store(this).pairing
+        if (current != null && Environment.isExternalStorageManager()) Thread {
+            try { Syncer(this, Api(current.server, current.deviceId, current.token)).syncAll() }
+            catch (e: Exception) { Log.w(Player.TAG, "Save sync failed: ${e.message}") }
+        }.start()
     }
 
     private fun showState() {
@@ -85,9 +92,11 @@ class MainActivity : Activity() {
                     Thread.sleep(2000)
                 }
                 Store(this).save(Pairing(url, device, api.authenticate(secret)))
+                SyncJobService.schedule(this)
                 Log.i(Player.TAG, "Paired device $device")
                 runOnUiThread { pairing = false; showState() }
             } catch (e: Exception) {
+                Log.w(Player.TAG, "Pairing failed", e)
                 runOnUiThread { pairing = false; status.text = "Pairing failed: ${e.message}" }
             }
         }.start()

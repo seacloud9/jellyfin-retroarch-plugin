@@ -27,7 +27,7 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Revoke the phone under Dashboard → Devices → the next launch reports that it is no longer paired.
 - [ ] Remove the player in the plugin settings → the next launch reports that access was removed.
 - [ ] Battery optimization or an app killed in the background does not lose a save that was already written.
-- [ ] Note: the Android app does not sync saves with the server yet; desktop saves do not reach the phone.
+- [ ] Save sync between phone and desktop: play on the desktop, launch on the phone (it should continue), reopen the RetroBridge app, play on the desktop again. Also check that the background job uploads without opening the app (within about 15 minutes, on Wi-Fi and battery).
 
 ## Pending: other manual checks
 

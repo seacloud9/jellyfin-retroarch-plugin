@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Keeps the periodic save sync job scheduled across reboots. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Required for a job that waits for network. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- RetroArch can only open games in shared storage, and save backups read RetroArch's shared save folder. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <queries>
@@ -32,5 +36,9 @@
                 <data android:scheme="retrobridge" android:host="launch" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".SyncJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>
