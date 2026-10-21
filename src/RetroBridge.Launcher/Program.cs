@@ -31,13 +31,14 @@ try
     var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
     var user = await client.GetFromJsonAsync<UserIdentity>("Users/Me", json, ct)
         ?? throw new InvalidOperationException("Server did not return a user identity.");
-    if (user.Id == Guid.Empty) throw new InvalidOperationException("A user access token is required; server API keys are not supported.");
+    // Jellyfin serializes user IDs without dashes, which Guid JSON conversion rejects.
+    if (!Guid.TryParse(user.Id, out var userId) || userId == Guid.Empty) throw new InvalidOperationException("A user access token is required; server API keys are not supported.");
     var games = await client.GetFromJsonAsync<Game[]>("RetroBridge/Games", json, ct) ?? [];
     var game = games.SingleOrDefault(x => x.Id == args[1]) ?? throw new ArgumentException("Game not found. Scan the library and copy its game ID.");
     if (string.IsNullOrEmpty(game.Extension) || Platforms.FromExtension(game.Extension) != game.Platform || game.Size < 0 || game.Size > 64 * 1024 * 1024 ||
         game.Id != game.Platform + "-" + game.Sha256)
         throw new InvalidOperationException("Unsupported or invalid game metadata (prototype limit: 64 MiB).");
-    var saveDirectory = LaunchPlan.SaveDirectory(args[4], server.AbsoluteUri, user.Id, game);
+    var saveDirectory = LaunchPlan.SaveDirectory(args[4], server.AbsoluteUri, userId, game);
     Directory.CreateDirectory(saveDirectory);
     var cache = Path.Combine(Path.GetFullPath(args[4]), "cache");
     Directory.CreateDirectory(cache);
@@ -94,4 +95,4 @@ static async Task<bool> Verified(string path, Game game, CancellationToken ct)
         Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct)) == game.Sha256;
 }
 
-internal sealed record UserIdentity(Guid Id);
+internal sealed record UserIdentity(string? Id);

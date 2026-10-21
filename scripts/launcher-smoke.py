@@ -25,7 +25,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(401)
             return
         if self.path == "/Users/Me":
-            payload = json.dumps(dict(Id="12345678-1234-1234-1234-123456789012")).encode()
+            payload = json.dumps(dict(Id="12345678123412341234123456789012")).encode()
         elif self.path == "/RetroBridge/Games":
             payload = json.dumps([game]).encode()
         elif self.path == "/RetroBridge/Games/" + game["Id"] + "/Content":
