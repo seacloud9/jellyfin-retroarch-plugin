@@ -257,6 +257,19 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
                 raise AssertionError(f'{name} ticket was not rejected')
         verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary)
 
+        # Per-game access: limit the game to someone else, then restore it.
+        someone = server.request('POST', '/Users/New', {'Name': 'retrobridge-other', 'Password': secrets.token_urlsafe(24)}, admin)['Id']
+        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Access', {'PlayerUserIds': [someone]}, admin)
+        if server.request('GET', '/RetroBridge/Games', token=ordinary):
+            raise AssertionError('Restricted game still listed for another player')
+        server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(404,))
+        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(404,))
+        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Access', {'PlayerUserIds': []}, admin)
+        if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 1:
+            raise AssertionError('Game not restored after clearing its restriction')
+        summary['per_game_access'] = True
+        config = server.request('GET', config_path, token=admin)
+
         config['PlayerUserIds'] = []
         server.request('POST', config_path, config, admin)
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(403,))

@@ -4,7 +4,7 @@ from pathlib import Path
 repo = Path(__file__).resolve().parents[1]
 html = (repo / "src/Jellyfin.Plugin.RetroBridge/Configuration/configPage.html").read_text()
 stub = '''<script>
-window.harnessConfig = {GameRoots: ['/fixtures'], PlayerUserIds: ['u1']};
+window.harnessConfig = {GameRoots: ['/fixtures'], PlayerUserIds: ['u1'], RestrictedGames: [{GameId:'gb-fixture',PlayerUserIds:['u1']}]};
 window.harnessGames = [
  {Id:'nes-fixture',Title:'Demo NES',Platform:'nes'},
  {Id:'gb-fixture',Title:'Demo Game Boy',Platform:'gb'},

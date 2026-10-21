@@ -8,6 +8,7 @@ namespace Jellyfin.Plugin.RetroBridge;
 public sealed record TicketRequest(string? DeviceId);
 public sealed record RedeemRequest(string? Ticket);
 public sealed record TitleRequest(string? Title);
+public sealed record AccessRequest(string[]? PlayerUserIds);
 
 [ApiController]
 [Route("RetroBridge")]
@@ -22,7 +23,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public ActionResult<IEnumerable<Game>> List([FromQuery] string? search, [FromQuery] string? platform)
     {
         if (!CanPlay()) return Forbid();
-        return Ok(catalog.Games.Select(x => Present(x.Game))
+        return Ok(Visible().Select(x => Present(x.Game))
             .Where(x => string.IsNullOrWhiteSpace(search) || x.Title.Contains(search, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(platform) || x.Platform == platform));
     }
@@ -44,11 +45,29 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return Ok(Present(game));
     }
 
+    // An empty or missing list makes the game available to every player again.
+    [HttpPost("Games/{id}/Access")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public IActionResult SetAccess(string id, [FromBody] AccessRequest request)
+    {
+        if (catalog.Games.All(x => x.Game.Id != id)) return NotFound();
+        var players = new List<string>();
+        foreach (var value in request.PlayerUserIds ?? [])
+            if (Guid.TryParse(value, out var player) && player != Guid.Empty) players.Add(player.ToString("N"));
+            else return BadRequest(new { Message = "Player IDs must be Jellyfin user IDs." });
+        var config = configuration();
+        var restricted = config.RestrictedGames.Where(x => x.GameId != id).ToList();
+        if (players.Count > 0) restricted.Add(new GameAccess { GameId = id, PlayerUserIds = [.. players.Distinct()] });
+        config.RestrictedGames = [.. restricted];
+        saveConfiguration(config);
+        return Ok(new { GameId = id, PlayerUserIds = players.Distinct() });
+    }
+
     [HttpGet("Games/{id}/Art")]
     public IActionResult Art(string id)
     {
         if (!CanPlay()) return Forbid();
-        if (catalog.Games.All(x => x.Game.Id != id) || artwork.Open(id) is not { } image) return NotFound();
+        if (Visible().All(x => x.Game.Id != id) || artwork.Open(id) is not { } image) return NotFound();
         Response.Headers.CacheControl = "private, max-age=86400";
         return File(image, "image/png");
     }
@@ -118,7 +137,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay() || UserId() is not { } user) return Forbid();
         if (string.IsNullOrWhiteSpace(request.DeviceId) || request.DeviceId.Length > 256) return BadRequest(new { Message = "Choose a paired device." });
-        if (catalog.Games.All(x => x.Game.Id != id)) return NotFound();
+        if (Visible().All(x => x.Game.Id != id)) return NotFound();
         // A listening device receives the launch directly, so any browser (including a phone) can start it.
         if (tickets.IsListening(user, request.DeviceId))
             return Ok(new { Delivered = true, Expires = tickets.IssueRemote(user, request.DeviceId, id) });
@@ -131,7 +150,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay() || UserId() is not { } user || User.FindFirst(DeviceIdClaim)?.Value is not { Length: > 0 } device) return Forbid();
         var id = tickets.Redeem(request.Ticket ?? "", user, device);
-        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
+        var game = id is null ? null : Visible().FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
         // One response for expired, replayed, foreign, and unknown tickets.
         return game is null ? NotFound(new { Message = "Launch ticket is invalid or expired. Start the game again." }) : Ok(game);
     }
@@ -142,7 +161,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay() || UserId() is not { } user || User.FindFirst(DeviceIdClaim)?.Value is not { Length: > 0 } device) return Forbid();
         var id = tickets.Claim(user, device);
-        var game = id is null ? null : catalog.Games.FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
+        var game = id is null ? null : Visible().FirstOrDefault(x => x.Game.Id == id)?.Game is { } found ? Present(found) : null;
         return game is null ? NoContent() : Ok(game);
     }
 
@@ -150,7 +169,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public IActionResult ContentFile(string id)
     {
         if (!CanPlay()) return Forbid();
-        var item = catalog.Games.FirstOrDefault(x => x.Game.Id == id);
+        var item = Visible().FirstOrDefault(x => x.Game.Id == id);
         if (item is null) return NotFound();
         // Revoking a configured root takes effect immediately, before the next scan.
         if (!configuration().GameRoots.Any(root => Path.GetFullPath(root) == item.Root)) return NotFound();
@@ -166,6 +185,16 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
 
     private Game Present(Game game) =>
         (configuration().TitleOverrides.FirstOrDefault(x => x.GameId == game.Id) is { } custom ? game with { Title = custom.Title } : game) with { HasArt = artwork.Has(game.Id) };
+
+    // Games the caller may see. Restricted games are indistinguishable from missing ones for everyone else.
+    private IEnumerable<IndexedGame> Visible()
+    {
+        if (User.IsInRole("Administrator")) return catalog.Games;
+        var user = UserId();
+        var restricted = configuration().RestrictedGames.ToDictionary(x => x.GameId, x => x.PlayerUserIds);
+        return catalog.Games.Where(x => !restricted.TryGetValue(x.Game.Id, out var players) ||
+            (user is { } id && players.Any(p => Guid.TryParse(p, out var allowed) && allowed == id)));
+    }
 
     private Guid? UserId() => Guid.TryParse(User.FindFirst(UserIdClaim)?.Value, out var id) && id != Guid.Empty ? id : null;
 

@@ -30,7 +30,7 @@ The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/
 5. Enter absolute game-folder paths **as seen by the Jellyfin server**. Tick the non-administrator users who may play, save, then scan. Container paths must refer to mounted folders.
 6. Search and filter games. Titles are cleaned from file names (`Super_Mario_Bros_(USA)_[!]` becomes *Super Mario Bros*, region *USA*). **Edit title** overrides a title for everyone; leave it empty to restore the file-name title. Use only games you own or redistributable homebrew.
 
-Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Access applies to the whole library; per-game permissions are not implemented. Removing a player takes effect immediately. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
+Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Every selected player sees the whole library unless a game is limited: **Access** on a game restricts it to chosen players. Restricted games behave as missing for everyone else (listing, tickets, downloads, artwork, and queued remote launches). Removing a player or restricting a game takes effect immediately, including for tickets already issued. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
 Scans hash only new or changed files, identified by size and modification time; **Full rescan** (`POST /RetroBridge/Scan?full=true`) rehashes everything. A new catalog is published only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Scans run in the background. The dashboard shows progress, and a daily 03:00 scan is scheduled as **Scan RetroBridge game library** under Dashboard → Scheduled Tasks, where you can change triggers and see history. A scan with issues shows as failed there and keeps the previous catalog.
 
@@ -76,6 +76,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | GET | `/RetroBridge/Scan` | Administrator | Scan status: `Running`, `Processed`, `Last` result, `LastCompleted` |
 | POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
 | POST | `/RetroBridge/Games/{id}/Title` | Administrator | Body `{"Title"}` (≤ 200 chars); empty restores the file-name title |
+| POST | `/RetroBridge/Games/{id}/Access` | Administrator | Body `{"PlayerUserIds": [...]}` limits the game to those players; empty restores access for all players |
 | GET | `/RetroBridge/Games/{id}/Art` | Player | Cached box art (PNG), 404 if none |
 | POST | `/RetroBridge/Artwork` | Administrator | Fetch missing art now, retrying misses (202; `?wait=true` returns counts); 409 if turned off |
 | GET | `/RetroBridge/Devices` | Player | The caller's paired companion devices (ID, name, last activity; never tokens) |
@@ -97,7 +98,6 @@ Still required before a usable beta:
 - Plugin upgrade tests and a visual check of the dashboard inside Jellyfin.
 - Native RetroArch save/restart tests on Windows.
 - Custom artwork uploads, descriptions, and other metadata.
-- Per-game permissions, artwork, and a play page integrated into Jellyfin's own navigation.
 - Packaged companion installers (it currently runs from a .NET build).
 - Dedicated game UI, installers, repository manifest, and release verification.
 

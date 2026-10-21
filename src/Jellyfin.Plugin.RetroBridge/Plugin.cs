@@ -17,6 +17,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Fetch box art from thumbnails.libretro.com after scans. Only the server contacts it.
     public bool FetchArtwork { get; set; } = true;
+
+    // Games limited to specific players. Games without an entry are available to every player.
+    public GameAccess[] RestrictedGames { get; set; } = [];
+}
+
+public sealed class GameAccess
+{
+    public string GameId { get; set; } = "";
+    public string[] PlayerUserIds { get; set; } = [];
 }
 
 public sealed class TitleOverride
