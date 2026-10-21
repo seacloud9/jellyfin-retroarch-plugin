@@ -21,7 +21,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.headers.get("X-Emby-Token") != "test-only-placeholder":
+        if 'Token="test-only-placeholder"' not in (self.headers.get("Authorization") or ""):
             self.send_error(401)
             return
         if self.path == "/Users/Me":

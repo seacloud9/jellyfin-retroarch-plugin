@@ -53,7 +53,7 @@ Saves and states live under `RetroBridge-data/saves/<server hash>/<user ID>/<pla
 
 ## API
 
-Use Jellyfin authentication (for example, an `X-Emby-Token` header). No credentials belong in query strings.
+Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` header; Jellyfin 12.1 rejects `X-Emby-Token` alone). No credentials belong in query strings.
 
 | Method | Route | Behavior |
 |---|---|---|

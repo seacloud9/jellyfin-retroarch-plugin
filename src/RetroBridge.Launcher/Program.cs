@@ -21,7 +21,10 @@ try
     if (string.IsNullOrWhiteSpace(token)) throw new ArgumentException("Set RETROBRIDGE_TOKEN to your Jellyfin user access token.");
     using var handler = new HttpClientHandler { AllowAutoRedirect = false };
     using var client = new HttpClient(handler) { BaseAddress = server, Timeout = TimeSpan.FromMinutes(10) };
-    client.DefaultRequestHeaders.Add("X-Emby-Token", token);
+    if (token.Any(c => c == '"' || c == '\\' || char.IsControl(c))) throw new ArgumentException("RETROBRIDGE_TOKEN contains invalid characters.");
+    // Jellyfin 12.1 ignores X-Emby-Token; it requires the MediaBrowser Authorization scheme.
+    client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization",
+        $"MediaBrowser Client=\"RetroBridge\", Device=\"{Environment.MachineName.Replace("\"", "")}\", DeviceId=\"retrobridge-launcher\", Version=\"0.1.0\", Token=\"{token}\"");
     using var cancellation = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
     var ct = cancellation.Token;
