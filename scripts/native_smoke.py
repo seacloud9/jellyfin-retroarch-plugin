@@ -12,6 +12,12 @@ import tempfile
 
 REPO = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO / 'src/RetroBridge.Launcher/bin/Release/net10.0/RetroBridge.Launcher.dll'
+
+def companion_command():
+    """The dev build via dotnet, or a packaged self-contained executable from RETROBRIDGE_COMPANION."""
+    packaged = os.environ.get('RETROBRIDGE_COMPANION')
+    return [packaged] if packaged else ['dotnet', str(LAUNCHER)]
+
 FRAMES = 300
 
 
@@ -28,7 +34,7 @@ def read_save(data):
 def verify_native(url, token, game, executable, core, temp_parent=None):
     if os.name == 'nt':
         raise RuntimeError('The native smoke wrapper currently supports macOS/Linux only')
-    if not LAUNCHER.is_file():
+    if not os.environ.get('RETROBRIDGE_COMPANION') and not LAUNCHER.is_file():
         raise RuntimeError('Build the launcher first: dotnet build -c Release')
     for path in (executable, core):
         if not path.is_file():
@@ -42,7 +48,7 @@ def verify_native(url, token, game, executable, core, temp_parent=None):
         env = {**os.environ, 'RETROBRIDGE_TOKEN': token}
         counters = []
         for boot in (1, 2):
-            result = subprocess.run(['dotnet', str(LAUNCHER), url, game['Id'], str(wrapper), str(core.resolve()), str(data)],
+            result = subprocess.run([*companion_command(), url, game['Id'], str(wrapper), str(core.resolve()), str(data)],
                                     env=env, capture_output=True, text=True, timeout=180)
             if result.returncode:
                 raise AssertionError(f'Launch {boot} failed ({result.returncode}): {result.stderr.strip()[-500:]}')

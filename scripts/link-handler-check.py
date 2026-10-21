@@ -12,9 +12,15 @@ import tempfile
 REPO = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO / 'src/RetroBridge.Launcher/bin/Release/net10.0/RetroBridge.Launcher.dll'
 
+def companion_command():
+    """The dev build via dotnet, or a packaged self-contained executable from RETROBRIDGE_COMPANION."""
+    packaged = os.environ.get('RETROBRIDGE_COMPANION')
+    return [packaged] if packaged else ['dotnet', str(LAUNCHER)]
+
+
 
 def companion(*args):
-    result = subprocess.run(['dotnet', str(LAUNCHER), *args], capture_output=True, text=True, timeout=120)
+    result = subprocess.run([*companion_command(), *args], capture_output=True, text=True, timeout=120)
     if result.returncode:
         raise AssertionError(f'{args[0]} failed: {result.stdout} {result.stderr}')
     return result.stdout

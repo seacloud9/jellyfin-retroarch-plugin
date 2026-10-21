@@ -1,6 +1,8 @@
 # Headless Linux RetroArch + Nestopia for scripts/jellyfin-smoke.py --native-linux-docker.
 # Teardown: see docs/linux-native-docker.md.
-FROM mcr.microsoft.com/dotnet/runtime:10.0@sha256:0cf09aaccf6a9f68900aed4c73fb28fe25bb59ec85de4dea08ba02240a8635f3
+# BASE is the .NET runtime for the dev build, or plain Ubuntu (no .NET) for the self-contained companion package.
+ARG BASE=mcr.microsoft.com/dotnet/runtime:10.0@sha256:0cf09aaccf6a9f68900aed4c73fb28fe25bb59ec85de4dea08ba02240a8635f3
+FROM ${BASE}
 LABEL org.retrobridge.smoke="true"
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends retroarch libretro-nestopia python3 \

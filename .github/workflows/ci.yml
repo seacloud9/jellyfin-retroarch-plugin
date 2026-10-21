@@ -29,6 +29,15 @@ jobs:
       - run: python scripts/package-plugin.py
       - name: Per-user link handler registration
         run: python scripts/link-handler-check.py
+      - name: Package the self-contained companion
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            macOS) rids="osx-arm64 osx-x64" ;;
+            Windows) rids="win-x64" ;;
+            *) rids="linux-x64 linux-arm64" ;;
+          esac
+          for rid in $rids; do python scripts/package-companion.py --rid "$rid"; done
       - uses: actions/setup-node@v4
         if: runner.os == 'Linux'
         with:
@@ -39,6 +48,21 @@ jobs:
       - name: Real Jellyfin and headless RetroArch save test (Linux Docker)
         if: runner.os == 'Linux'
         run: python scripts/jellyfin-smoke.py --native-linux-docker
+      - name: Verify the packaged companion without .NET
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            macOS) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-osx-arm64.tar.gz ;;
+            Windows) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-win-x64.zip ;;
+            *) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-linux-x64.tar.gz --jellyfin-linux-docker ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrobridge-companion-${{ runner.os }}
+          path: |
+            artifacts/companion/*.tar.gz
+            artifacts/companion/*.zip
+            artifacts/companion/*.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: retrobridge-${{ runner.os }}

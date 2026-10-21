@@ -17,7 +17,7 @@ internal static class Autostart
     public static string Enable(string data)
     {
         char[] unsupported = OperatingSystem.IsWindows() ? ['"', '%', '\n', '\r'] : ['"', '\\', '\'', '`', '$', '%', '\n', '\r', '<', '>', '&'];
-        foreach (var value in new[] { data, LinkHandler.AppHost, LinkHandler.DotnetRoot })
+        foreach (var value in LinkHandler.RegisteredPaths(data))
             if (value.IndexOfAny(unsupported) >= 0) throw new ArgumentException($"Path contains characters not supported for autostart: {value}");
         if (OperatingSystem.IsWindows()) return EnableWindows(data);
         if (OperatingSystem.IsMacOS()) return EnableMac(data);
@@ -80,6 +80,7 @@ internal static class Autostart
         Directory.CreateDirectory(Path.GetDirectoryName(MacAgent)!);
         static string X(string value) => SecurityElement.Escape(value);
         // KeepAlive restarts only after a crash; permanent stops (unpaired, access removed) exit 0.
+        var environment = LinkHandler.DotnetRoot is { } root ? $"<key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>{X(root)}</string></dict>" : "";
         File.WriteAllText(MacAgent, $"""
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -90,7 +91,7 @@ internal static class Autostart
               <array>
                 <string>{X(LinkHandler.AppHost)}</string><string>listen</string><string>--background</string><string>--data</string><string>{X(data)}</string>
               </array>
-              <key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>{X(LinkHandler.DotnetRoot)}</string></dict>
+              {environment}
               <key>RunAtLoad</key><true/>
               <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
               <key>ThrottleInterval</key><integer>30</integer>
@@ -107,6 +108,7 @@ internal static class Autostart
     private static string EnableLinux(string data)
     {
         var exec = $"\"{LinkHandler.AppHost}\" listen --background --data \"{data}\"";
+        var environment = LinkHandler.DotnetRoot is { } root ? $"Environment=\"DOTNET_ROOT={root}\"" : "";
         Directory.CreateDirectory(Path.GetDirectoryName(SystemdUnit)!);
         File.WriteAllText(SystemdUnit, $"""
             [Unit]
@@ -114,7 +116,7 @@ internal static class Autostart
             After=network-online.target
 
             [Service]
-            Environment="DOTNET_ROOT={LinkHandler.DotnetRoot}"
+            {environment}
             ExecStart={exec}
             Restart=on-failure
             RestartSec=30
@@ -132,7 +134,7 @@ internal static class Autostart
             [Desktop Entry]
             Type=Application
             Name=RetroBridge Listener
-            Exec=env "DOTNET_ROOT={LinkHandler.DotnetRoot}" {exec}
+            Exec={(LinkHandler.DotnetRoot is { } dotnet ? $"env \"DOTNET_ROOT={dotnet}\" " : "")}{exec}
             NoDisplay=true
             X-GNOME-Autostart-enabled=true
 

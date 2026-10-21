@@ -30,7 +30,8 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 
 ## Pending: other manual checks
 
-- [ ] Windows: native RetroArch save/restart (CI covers only build, tests, and link registration).
+- [ ] Windows: native RetroArch save/restart with the packaged `win-x64` companion (CI covers build, tests, and registration only).
+- [ ] Download a companion package on a clean machine (no .NET, no developer tools) and follow `QUICKSTART.txt` end to end. Note Gatekeeper/SmartScreen prompts.
 - [ ] Windows: pressing Play in Edge/Chrome launches through the registered `retrobridge://` handler.
 - [ ] Linux desktop: pressing Play in Firefox/Chrome launches through the `.desktop` handler.
 - [ ] `autostart on`, then sign out and back in (or reboot) on macOS, Windows, and Linux: the device shows *(ready)* on the play page without running anything by hand. On Windows, confirm no console window appears.

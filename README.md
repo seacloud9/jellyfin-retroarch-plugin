@@ -34,6 +34,12 @@ Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets
 
 Scans hash only new or changed files, identified by size and modification time; **Full rescan** (`POST /RetroBridge/Scan?full=true`) rehashes everything. A new catalog is published only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Scans run in the background. The dashboard shows progress, and a daily 03:00 scan is scheduled as **Scan RetroBridge game library** under Dashboard → Scheduled Tasks, where you can change triggers and see history. A scan with issues shows as failed there and keeps the previous catalog.
 
+## Install the companion
+
+Download the archive for your computer from the latest CI run's `retrobridge-companion-*` artifacts. Packages exist for `osx-arm64`, `osx-x64`, `win-x64`, `linux-x64`, and `linux-arm64`; check each against its `.sha256`. Extract it anywhere. It contains one self-contained `RetroBridge.Launcher` executable (no .NET needed) and a `QUICKSTART.txt`. To build one yourself: `python3 scripts/package-companion.py --rid <rid>`.
+
+macOS builds are not signed or notarized. If macOS blocks the first run, use `xattr -d com.apple.quarantine RetroBridge.Launcher`. Windows SmartScreen may also warn about an unsigned executable. Keep the executable where you extracted it before running `register` or `autostart on`, because they record its path.
+
 ## Play (one click)
 
 Install RetroArch and the cores you need separately. On each player's computer, run these once. `dotnet run --project src/RetroBridge.Launcher -c Release --` works in place of `RetroBridge.Launcher`:
@@ -100,7 +106,7 @@ Still required before a usable beta:
 - Native RetroArch save/restart tests on Windows.
 - Descriptions and other metadata.
 - Packaged companion installers (it currently runs from a .NET build).
-- Dedicated game UI, installers, repository manifest, and release verification.
+- Signed/notarized installers, a Jellyfin plugin repository manifest, and published releases.
 
 Phones work as remotes for a listening computer. **Android** can also play on the phone itself with the prototype companion in `android/` (build with `./gradlew :app:assembleDebug`). iOS can only act as a remote. Android is verified on the emulator only; a real-phone test is pending ([checklist](docs/manual-smoke.md#pending-real-android-phone-next)). See [mobile support](docs/mobile.md).
 

@@ -17,14 +17,26 @@ internal static class LinkHandler
         }
     }
 
-    // shared/Microsoft.NETCore.App/<version>/ is three levels below the .NET root. Links start without the user's shell environment.
-    internal static string DotnetRoot => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
+    // Framework-dependent builds need DOTNET_ROOT because links and login items start without the user's shell environment.
+    // shared/Microsoft.NETCore.App/<version>/ is three levels below the .NET root. Self-contained builds need nothing (null).
+    internal static string? DotnetRoot
+    {
+        get
+        {
+            var runtime = Path.TrimEndingDirectorySeparator(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory());
+            // The runtime lives next to the app in a self-contained build.
+            if (runtime.Length == 0 || runtime == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)) return null;
+            return Path.GetFullPath(Path.Combine(runtime, "..", "..", ".."));
+        }
+    }
+
+    internal static IEnumerable<string> RegisteredPaths(string data) => DotnetRoot is { } root ? [data, AppHost, root] : [data, AppHost];
 
     public static string Register(string data)
     {
         // Registration embeds these paths in generated files; reject characters that would need quoting rules.
         char[] unsupported = OperatingSystem.IsWindows() ? ['"', '%', '\n', '\r'] : ['"', '\\', '\'', '`', '$', '%', '\n', '\r'];
-        foreach (var value in new[] { data, AppHost, DotnetRoot })
+        foreach (var value in RegisteredPaths(data))
             if (value.IndexOfAny(unsupported) >= 0)
                 throw new ArgumentException($"Path contains characters not supported for link registration: {value}");
         if (OperatingSystem.IsWindows()) return RegisterWindows(data);
@@ -74,7 +86,7 @@ internal static class LinkHandler
         var script = Path.Combine(Path.GetTempPath(), "retrobridge-handler-" + Guid.NewGuid().ToString("N") + ".applescript");
         File.WriteAllText(script, $"""
             on open location theURL
-                do shell script "DOTNET_ROOT=" & quoted form of "{DotnetRoot}" & " " & quoted form of "{AppHost}" & " open " & quoted form of theURL & " --data " & quoted form of "{data}" & " > /dev/null 2>&1 &"
+                do shell script {(DotnetRoot is { } root ? $"\"DOTNET_ROOT=\" & quoted form of \"{root}\" & \" \" & " : "")}quoted form of "{AppHost}" & " open " & quoted form of theURL & " --data " & quoted form of "{data}" & " > /dev/null 2>&1 &"
             end open location
             on run
                 display dialog "RetroBridge Launcher opens retrobridge:// links from the Jellyfin play page." buttons {"OK"} default button 1
@@ -111,7 +123,7 @@ internal static class LinkHandler
             [Desktop Entry]
             Type=Application
             Name=RetroBridge Launcher
-            Exec=env "DOTNET_ROOT={DotnetRoot}" "{AppHost}" open %u --data "{data}"
+            Exec={(DotnetRoot is { } root ? $"env \"DOTNET_ROOT={root}\" " : "")}"{AppHost}" open %u --data "{data}"
             MimeType=x-scheme-handler/{LaunchLink.Scheme};
             NoDisplay=true
             Terminal=false

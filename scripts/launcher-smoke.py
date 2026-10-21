@@ -49,7 +49,7 @@ try:
         emulator.write_text('#!/bin/sh\n[ "$1" = "-L" ] || exit 10\n[ "$3" = "--appendconfig" ] || exit 11\n[ -f "$2" ] && [ -f "$5" ] || exit 12\nprintf "started\\n" >> "$(dirname "$4")/fixture.srm"\n')
         emulator.chmod(0o700)
         core = root / "fake core"; core.write_text("substitute")
-        command = [dotnet, str(launcher), f"http://127.0.0.1:{server.server_port}", game["Id"], str(emulator), str(core), str(root / "data")]
+        command = [*([os.environ["RETROBRIDGE_COMPANION"]] if os.environ.get("RETROBRIDGE_COMPANION") else [dotnet, str(launcher)]), f"http://127.0.0.1:{server.server_port}", game["Id"], str(emulator), str(core), str(root / "data")]
         environment = dict(os.environ, RETROBRIDGE_TOKEN="test-only-placeholder")
         def run():
             return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=30)

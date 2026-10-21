@@ -39,16 +39,27 @@ def host_url(container):
     return 'http://127.0.0.1:' + port
 
 
+PLAIN_UBUNTU = 'ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac'
+
+
 def verify_native_linux_docker(container, admin, game):
-    """Run native_smoke.py in a headless Linux RetroArch container sharing Jellyfin's network."""
-    docker('build', '-q', '-t', LINUX_NATIVE_IMAGE, '-f', str(REPO / 'docker/native-linux.Dockerfile'), str(REPO / 'docker'), timeout=900)
+    """Run native_smoke.py in a headless Linux RetroArch container sharing Jellyfin's network.
+
+    With RETROBRIDGE_COMPANION_LINUX set to a packaged self-contained Linux companion, the container has no .NET at all.
+    """
+    packaged = os.environ.get('RETROBRIDGE_COMPANION_LINUX')
+    image = LINUX_NATIVE_IMAGE + ('-packaged' if packaged else '')
+    docker('build', '-q', '-t', image, *(['--build-arg', 'BASE=' + PLAIN_UBUNTU] if packaged else []),
+           '-f', str(REPO / 'docker/native-linux.Dockerfile'), str(REPO / 'docker'), timeout=900)
+    extra = ['--mount', f'type=bind,src={Path(packaged).resolve()},dst=/opt/retrobridge/RetroBridge.Launcher,readonly',
+             '-e', 'RETROBRIDGE_COMPANION=/opt/retrobridge/RetroBridge.Launcher'] if packaged else []
     # Sharing the network namespace keeps Jellyfin on loopback, which the companion allows over HTTP.
     output = docker('run', '--rm', '--label', 'org.retrobridge.smoke=true', '--network', 'container:' + container,
-                    '-e', 'RETROBRIDGE_TOKEN', '--mount', f'type=bind,src={REPO},dst=/repo,readonly', LINUX_NATIVE_IMAGE,
+                    '-e', 'RETROBRIDGE_TOKEN', *extra, '--mount', f'type=bind,src={REPO},dst=/repo,readonly', image,
                     'python3', '/repo/scripts/native_smoke.py', 'http://127.0.0.1:8096', game['Id'],
                     '/usr/bin/retroarch', '/opt/cores/nestopia_libretro.so',
                     env={**os.environ, 'RETROBRIDGE_TOKEN': admin}, timeout=600)
-    return {'platform': 'linux-docker', **json.loads(output.splitlines()[-1])}
+    return {'platform': 'linux-docker', 'companion': 'packaged (no .NET)' if packaged else 'dotnet', **json.loads(output.splitlines()[-1])}
 
 
 class Server:
@@ -94,9 +105,15 @@ class Server:
 
 LAUNCHER = REPO / 'src/RetroBridge.Launcher/bin/Release/net10.0/RetroBridge.Launcher.dll'
 
+def companion_command():
+    """The dev build via dotnet, or a packaged self-contained executable from RETROBRIDGE_COMPANION."""
+    packaged = os.environ.get('RETROBRIDGE_COMPANION')
+    return [packaged] if packaged else ['dotnet', str(LAUNCHER)]
+
+
 
 def companion(*args, timeout=60):
-    return subprocess.run(['dotnet', str(LAUNCHER), *args], capture_output=True, text=True, timeout=timeout)
+    return subprocess.run([*companion_command(), *args], capture_output=True, text=True, timeout=timeout)
 
 
 def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary):
@@ -162,7 +179,7 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
             raise AssertionError('autostart on failed: ' + enabled.stderr.strip())
         listener = None
     else:
-        listener = subprocess.Popen(['dotnet', str(LAUNCHER), 'listen', '--data', str(data)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        listener = subprocess.Popen([*companion_command(), 'listen', '--data', str(data)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         deadline = time.monotonic() + 30
         while not all(d['Listening'] for d in server.request('GET', '/RetroBridge/Devices', token=ordinary)):
@@ -218,7 +235,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
 
     with tempfile.TemporaryDirectory(prefix='retrobridge-pair-') as directory:
         data = Path(directory) / 'data'
-        pairing = subprocess.Popen(['dotnet', str(LAUNCHER), 'pair', server.url, str(data)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        pairing = subprocess.Popen([*companion_command(), 'pair', server.url, str(data)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             line = pairing.stdout.readline()
             if not line.startswith('Quick Connect code: '):
