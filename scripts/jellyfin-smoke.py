@@ -1,0 +1,210 @@
+"""Test the packaged plugin in an isolated, real Jellyfin Docker server.
+
+Only creates/removes a uniquely named test container and a temporary workspace.
+Generated credentials stay in memory. No existing Jellyfin installation is used.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import subprocess
+import tempfile
+import time
+import urllib.error
+import urllib.request
+import uuid
+import zipfile
+
+from fixture_rom import write_fixture
+
+REPO = Path(__file__).resolve().parents[1]
+PLUGIN_ID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
+# Multi-architecture manifest for the tested Jellyfin 12.1 release.
+IMAGE = 'jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e'
+
+
+def docker(*args):
+    result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=180)
+    if result.returncode:
+        raise RuntimeError(f'docker {args[0]} failed: {result.stderr.strip()}')
+    return result.stdout.strip()
+
+
+def host_url(container):
+    port = json.loads(docker('inspect', container))[0]['NetworkSettings']['Ports']['8096/tcp'][0]['HostPort']
+    return 'http://127.0.0.1:' + port
+
+
+class Server:
+    def __init__(self, url):
+        self.url = url
+        self.client = 'MediaBrowser Client="RetroBridge Smoke", Device="Integration", DeviceId="' + uuid.uuid4().hex + '", Version="0.1.0"'
+
+    def request(self, method, path, data=None, token=None, expected=(200, 204), raw=False):
+        # Jellyfin reads the token from the Authorization header when one is present.
+        headers = {'Authorization': self.client + (f', Token="{token}"' if token else '')}
+        if data is not None:
+            headers['Content-Type'] = 'application/json'
+        request = urllib.request.Request(self.url + path, data=None if data is None else json.dumps(data).encode(), headers=headers, method=method)
+        try:
+            response = urllib.request.urlopen(request, timeout=20)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            payload = response.read()
+            if response.status not in expected:
+                # Never print response bodies; authentication responses can contain credentials.
+                raise AssertionError(f'{method} {path}: expected {expected}, received {response.status}')
+            if raw:
+                return payload
+            return json.loads(payload) if payload and response.headers.get('Content-Type', '').startswith('application/json') else None
+
+    def ready(self):
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                info = self.request('GET', '/System/Info/Public')
+                # Early startup can answer with JSON that lacks server details.
+                if info and 'Version' in info:
+                    return info
+            except (OSError, AssertionError):
+                pass
+            time.sleep(1)
+        raise TimeoutError('Jellyfin did not become ready within 120 seconds')
+
+    def login(self, name, password):
+        return self.request('POST', '/Users/AuthenticateByName', {'Username': name, 'Pw': password})['AccessToken']
+
+
+def verify_server(server, container, fixtures, summary):
+    info = server.ready()
+    if info['Version'] not in ('12.1', '12.1.0'):
+        raise AssertionError(f'Unexpected Jellyfin version: {info["Version"]}')
+    summary['jellyfin_version'] = info['Version']
+    server.request('GET', '/Startup/User')
+    admin_password = secrets.token_urlsafe(24)
+    server.request('POST', '/Startup/User', {'Name': 'retrobridge-admin', 'Password': admin_password})
+    server.request('POST', '/Startup/Complete')
+    admin = server.login('retrobridge-admin', admin_password)
+    plugins = server.request('GET', '/Plugins', token=admin)
+    plugin = next((p for p in plugins if p['Id'].replace('-', '') == PLUGIN_ID.replace('-', '')), None)
+    if not plugin or plugin.get('Status') != 'Active':
+        raise AssertionError('RetroBridge did not load as an active Jellyfin plugin')
+    summary['plugin_loaded'] = True
+    page = server.request('GET', '/web/ConfigurationPage?name=RetroBridge', token=admin, raw=True)
+    if b'GameRoots' not in page or b'RetroBridge/Games' not in page:
+        raise AssertionError('Embedded configuration page is missing')
+
+    config_path = '/Plugins/' + PLUGIN_ID + '/Configuration'
+    config = server.request('GET', config_path, token=admin)
+    config['GameRoots'] = ['/games']
+    server.request('POST', config_path, config, admin)
+    scan = server.request('POST', '/RetroBridge/Scan', token=admin)
+    if not scan['Published'] or scan['Count'] != 1:
+        raise AssertionError('Fixture scan failed')
+    games = server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin)
+    if len(games) != 1:
+        raise AssertionError('Expected exactly one filtered fixture')
+    game = games[0]
+    if 'Root' in game or 'RelativePath' in game:
+        raise AssertionError('Catalog metadata leaked a server path')
+    expected = (fixtures / 'save-counter.nes').read_bytes()
+    if game['Sha256'] != hashlib.sha256(expected).hexdigest():
+        raise AssertionError('Catalog checksum does not match fixture')
+    route = '/RetroBridge/Games/' + game['Id'] + '/Content'
+    if server.request('GET', route, token=admin, raw=True) != expected:
+        raise AssertionError('Downloaded fixture differs from source')
+    # Header shape sent by the companion (no server-specific client fields).
+    launcher_style = urllib.request.Request(server.url + route, headers={'Authorization': 'MediaBrowser Client="RetroBridge", Device="smoke", DeviceId="retrobridge-launcher", Version="0.1.0", Token="' + admin + '"'})
+    try:
+        with urllib.request.urlopen(launcher_style, timeout=20) as response:
+            if response.read() != expected:
+                raise AssertionError('Launcher-style download differs from source')
+    except urllib.error.HTTPError as error:
+        raise AssertionError(f'Launcher-style authorization rejected: {error.code}') from None
+    summary['launcher_token_header'] = True
+    server.request('POST', '/RetroBridge/Scan', token=admin)
+    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+        raise AssertionError('Rescan changed identity or duplicated content')
+    summary['scan_filter_download_rescan'] = True
+
+    password = secrets.token_urlsafe(24)
+    user = server.request('POST', '/Users/New', {'Name': 'retrobridge-user', 'Password': password}, admin)
+    if user['Policy']['IsAdministrator']:
+        raise AssertionError('Test user must not be an administrator')
+    ordinary = server.login('retrobridge-user', password)
+    for method, endpoint in [('GET', '/RetroBridge/Games'), ('POST', '/RetroBridge/Scan'), ('GET', route)]:
+        server.request(method, endpoint, expected=(401,))
+        server.request(method, endpoint, token=ordinary, expected=(403,))
+    summary['real_authentication_boundaries'] = True
+
+    config['GameRoots'] = []
+    server.request('POST', config_path, config, admin)
+    server.request('GET', route, token=admin, expected=(404,))
+    config['GameRoots'] = ['/games']
+    server.request('POST', config_path, config, admin)
+    summary['root_revocation'] = True
+
+    docker('restart', container)
+    # A restart reassigns the ephemeral host port.
+    server.url = host_url(container)
+    server.ready()
+    admin = server.login('retrobridge-admin', admin_password)
+    if server.request('GET', config_path, token=admin)['GameRoots'] != ['/games']:
+        raise AssertionError('Plugin configuration did not survive restart')
+    server.request('POST', '/RetroBridge/Scan', token=admin)
+    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+        raise AssertionError('Content identity did not survive restart and rescan')
+    summary['restart_configuration_identity'] = True
+    return admin, game
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--native-executable', type=Path, help='Also launch a real RetroArch executable twice (Unix)')
+    parser.add_argument('--native-core', type=Path, help='Installed Nestopia core for the native save test')
+    parser.add_argument('--native-temp-parent', type=Path, help='Directory accessible to RetroArch; needed for sandboxed macOS builds')
+    args = parser.parse_args()
+    if bool(args.native_executable) != bool(args.native_core):
+        parser.error('--native-executable and --native-core must be supplied together')
+    archive = REPO / 'artifacts/RetroBridge-0.1.0.zip'
+    if not archive.is_file():
+        parser.error('Build and run scripts/package-plugin.py first')
+    docker('info', '--format', '{{.ServerVersion}}')
+    container = 'retrobridge-smoke-' + uuid.uuid4().hex[:12]
+    summary = {'image': IMAGE, 'native_emulation': 'not requested'}
+    with tempfile.TemporaryDirectory(prefix='retrobridge-jellyfin-') as directory:
+        workspace = Path(directory)
+        config = workspace / 'config'
+        plugin = config / 'plugins/RetroBridge'
+        plugin.mkdir(parents=True)
+        with zipfile.ZipFile(archive) as package:
+            for name in ('Jellyfin.Plugin.RetroBridge.dll', 'RetroBridge.Domain.dll'):
+                (plugin / name).write_bytes(package.read(name))
+        fixtures = workspace / 'games'
+        write_fixture(fixtures / 'save-counter.nes')
+        started = False
+        try:
+            docker('run', '-d', '--name', container, '-p', '127.0.0.1::8096',
+                   '--mount', f'type=bind,src={config},dst=/config',
+                   '--mount', f'type=bind,src={fixtures},dst=/games,readonly', IMAGE)
+            started = True
+            server = Server(host_url(container))
+            print('Testing real Jellyfin at ' + server.url, flush=True)
+            admin, game = verify_server(server, container, fixtures, summary)
+            if args.native_executable:
+                from native_smoke import verify_native
+                summary['native_emulation'] = verify_native(server.url, admin, game, args.native_executable, args.native_core, args.native_temp_parent)
+            output = REPO / 'artifacts/jellyfin-smoke.json'
+            output.write_text(json.dumps(summary, indent=2) + '\n')
+            print('PASS: packaged plugin loads, real authentication, scan/filter/download, root revocation, restart and identity', flush=True)
+            print('Verification record: ' + str(output))
+        finally:
+            if started:
+                docker('rm', '-f', container)
+
+
+if __name__ == '__main__':
+    main()

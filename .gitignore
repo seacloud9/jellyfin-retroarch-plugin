@@ -4,3 +4,4 @@ artifacts/
 .env*
 .DS_Store
 TestResults/
+__pycache__/
