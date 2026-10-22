@@ -429,16 +429,31 @@ public sealed class ApiTests : IDisposable
             using (var list = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Saves", "User", Player, "d")))
                 Assert.Contains("\"device\":\"retrobridge-a\"", await list.Content.ReadAsStringAsync());
 
+            using (var status = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Saves", "User", Player, "d")))
+            {
+                var body = await status.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                Assert.Equal(2, body.GetProperty(game.Id).GetProperty("revision").GetInt64());
+                Assert.Equal("another device", body.GetProperty(game.Id).GetProperty("device").GetString());
+            }
+            // A save uploaded by one of the player's paired devices shows that device's name.
+            var fromLaptop = As(HttpMethod.Put, $"/RetroBridge/Games/{game.Id}/Saves/{name}?baseRevision=2", "User", Player, "retrobridge-mine");
+            fromLaptop.Content = new ByteArrayContent([8, 8]);
+            using (await _client.SendAsync(fromLaptop)) { }
+            using (var named = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Saves", "User", Player, "d")))
+                Assert.Equal("Laptop", (await named.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty(game.Id).GetProperty("device").GetString());
+            using (var empty = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Saves", "User", other, "d")))
+                Assert.Equal("{}", await empty.Content.ReadAsStringAsync());
+
             // Saves are per user, names are restricted, and size is limited.
             using (var foreign = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Saves/{name}", "User", other, "d")))
                 Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
             Assert.Equal(HttpStatusCode.BadRequest, (await Put([1], 0, file: game.Id + ".state")).Status);
             Assert.Equal(HttpStatusCode.BadRequest, (await Put([1], 0, file: "..%2F..%2Fevil.srm")).Status);
-            Assert.Equal(HttpStatusCode.BadRequest, (await Put(new byte[SaveSync.MaxBytes + 1], 2)).Status);
+            Assert.Equal(HttpStatusCode.BadRequest, (await Put(new byte[SaveSync.MaxBytes + 1], 3)).Status);
 
             // A restricted game's saves are hidden like the game itself.
             _configuration.RestrictedGames = [new GameAccess { GameId = game.Id, PlayerUserIds = [other.ToString("N")] }];
-            Assert.Equal(HttpStatusCode.NotFound, (await Put([7], 2)).Status);
+            Assert.Equal(HttpStatusCode.NotFound, (await Put([7], 3)).Status);
         }
         finally { Directory.Delete(root, true); }
     }

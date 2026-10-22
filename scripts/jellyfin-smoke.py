@@ -251,6 +251,10 @@ def verify_save_conflict(server, token, game, workspace, stub_core):
     history = server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Saves', token=token)
     if history[0]['Revision'] != 3:  # A, A again, then B's conflict winner
         raise AssertionError(f'Unexpected server revision: {history}')
+    status = server.request('GET', '/RetroBridge/Saves', token=token).get(game['Id'])
+    # The dev-token companion's device ID is not a paired device, so it is reported as "another device".
+    if not status or status['Revision'] != 3 or not status['Device']:
+        raise AssertionError(f'Play page save status missing: {status}')
 
 
 def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, summary, os_handler=False):

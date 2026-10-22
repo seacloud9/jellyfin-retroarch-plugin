@@ -40,6 +40,7 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Controller input, audio, window focus, and normal exit on macOS/Windows/Linux with a playable homebrew game.
 - [ ] Missing executable/core and corrupt content produce actionable messages in the desktop companion log.
 - [ ] Plugin upgrade over an existing install keeps configuration, the catalog snapshot, and cached artwork.
+- [ ] Play page "Saved … on …" line after playing on a paired desktop and on the Android app.
 - [ ] Box art for a real No-Intro-named library (dozens of games): check match quality and misses, and the play page grid on phone and desktop.
 
 ## Verified automatically (for reference)

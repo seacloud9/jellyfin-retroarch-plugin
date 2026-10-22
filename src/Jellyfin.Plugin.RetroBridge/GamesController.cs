@@ -117,6 +117,21 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return Visible().Any(x => x.Game.Id == id) ? Ok(saves.List(user, id)) : NotFound();
     }
 
+    // Latest save per visible game, with the saving device's name when it is one of the caller's devices.
+    [HttpGet("Saves")]
+    public IActionResult SaveStatus()
+    {
+        if (!CanPlay() || UserId() is not { } user) return Forbid();
+        var visible = Visible().Select(x => x.Game.Id).ToHashSet(StringComparer.Ordinal);
+        var names = devices.ForUser(user).ToDictionary(x => x.Id, x => x.Name);
+        return Ok(saves.Latest(user).Where(x => visible.Contains(x.Key)).ToDictionary(x => x.Key, x => new
+        {
+            x.Value.Revision,
+            x.Value.Modified,
+            Device = names.GetValueOrDefault(x.Value.Device) ?? "another device",
+        }));
+    }
+
     [HttpGet("Games/{id}/Saves/{name}")]
     public IActionResult DownloadSave(string id, string name)
     {

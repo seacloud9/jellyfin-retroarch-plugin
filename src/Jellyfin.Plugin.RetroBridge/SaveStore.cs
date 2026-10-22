@@ -29,6 +29,17 @@ public sealed class SaveStore(string root)
 
     public IReadOnlyList<ServerSave> List(Guid user, string gameId) => [.. Load(GameDirectory(user, gameId)).Values.OrderBy(x => x.Name, StringComparer.Ordinal)];
 
+    // The most recent save per game for a user, for the play page.
+    public IReadOnlyDictionary<string, ServerSave> Latest(Guid user)
+    {
+        var directory = Path.Combine(root, user.ToString("N"));
+        if (!Directory.Exists(directory)) return new Dictionary<string, ServerSave>();
+        return Directory.GetDirectories(directory)
+            .Select(game => (Game: Path.GetFileName(game), Save: Load(game).Values.MaxBy(x => x.Modified)))
+            .Where(x => x.Save is not null)
+            .ToDictionary(x => x.Game, x => x.Save!);
+    }
+
     public Stream? Open(Guid user, string gameId, string name)
     {
         if (!SaveSync.IsSyncedName(gameId, name)) return null;

@@ -21,6 +21,7 @@
   .cover img { width: 100%; height: 100%; object-fit: contain; }
   li span { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
   li small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  li small.saved { color: var(--accent); }
   button.play { background: var(--accent); color: var(--accent-text); border: 0; padding: 8px 18px; cursor: pointer; margin-top: auto; }
   button:disabled { opacity: .5; cursor: default; }
   #status { min-height: 1.5em; }
@@ -42,7 +43,7 @@
   </div>
 <script>
 (function () {
-  var auth = null, games = [], devices = [];
+  var auth = null, games = [], devices = [], saved = {};
   // iOS cannot run a companion, so it can only send launches to a listening device. Android has its own companion app.
   var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var android = /Android/.test(navigator.userAgent);
@@ -79,6 +80,13 @@
       .catch(function () { return null; });
     return arts[game.Id];
   }
+  function ago(when) {
+    var minutes = Math.round((Date.now() - new Date(when).getTime()) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return minutes + ' min ago';
+    if (minutes < 1440) return Math.round(minutes / 60) + ' h ago';
+    return new Date(when).toLocaleDateString();
+  }
   function render() {
     var search = $('search').value.toLowerCase(), platform = $('platform').value, list = $('games');
     list.replaceChildren();
@@ -87,6 +95,7 @@
       cover.className = 'cover'; cover.textContent = g.Platform.toUpperCase();
       if (g.HasArt) art(g).then(function (url) { if (!url) return; var img = document.createElement('img'); img.src = url; img.alt = ''; cover.replaceChildren(img); });
       name.textContent = g.Title; tag.textContent = g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : ''); name.append(tag);
+      if (saved[g.Id]) { var save = document.createElement('small'); save.className = 'saved'; save.textContent = 'Saved ' + ago(saved[g.Id].Modified) + ' on ' + saved[g.Id].Device; name.append(save); }
       play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title);
       play.disabled = !devices.length; if (!devices.length) play.title = 'Pair a device to play';
       play.addEventListener('click', function () { launch(g, play); });
@@ -128,6 +137,8 @@
         var o = document.createElement('option'); o.value = d.Id; o.textContent = d.Name + (d.Listening ? ' (ready)' : ''); $('device').append(o);
       });
       games = await api('GET', 'Games');
+      // Save status is optional; older servers or errors just hide it.
+      try { saved = await api('GET', 'Saves'); } catch (_) { saved = {}; }
       $('library').hidden = false; render();
     } catch (error) {
       setup([error.status === 403 ? 'Your account does not have access to RetroBridge. Ask an administrator.' : error.status === 401 ? 'Your Jellyfin session expired. Sign in again, then reload.' : 'RetroBridge is unavailable right now.']);
