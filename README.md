@@ -125,6 +125,8 @@ Still required before a usable beta:
 
 Phones work as remotes for a listening computer. **Android** can also play on the phone itself with the prototype companion in `android/` (build with `./gradlew :app:assembleDebug`). iOS can only act as a remote. Android is verified on the emulator only; a real-phone test is pending ([checklist](docs/manual-smoke.md#pending-real-android-phone-next)). See [mobile support](docs/mobile.md).
 
+Releases: [latest](https://github.com/seacloud9/jellyfin-retroarch-plugin/releases/latest) · [how releases are made](docs/releasing.md).
+
 See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. The same test passes on Linux in Docker ([setup and teardown](docs/linux-native-docker.md)). Windows native runs remain open.
 
 ## License

@@ -70,7 +70,7 @@ def main():
     names = sorted(p.name for p in out.iterdir() if p.is_file())
     (out / 'SHA256SUMS').write_text(''.join(f'{hashlib.sha256((out / n).read_bytes()).hexdigest()}  {n}\n' for n in names))
     assets = '\n'.join(f'- `{n}`' for n in names + ['SHA256SUMS'])
-    (out / 'NOTES.md').write_text(f"""RetroBridge {version} — prototype release for **Jellyfin {TARGET_ABI[:-2]}**. Licensed GPL-2.0-or-later.
+    (out / 'NOTES.md').write_text(f"""RetroBridge {version} — **prototype** release for **Jellyfin {TARGET_ABI[:-2]}** (published as "latest" so the repository URL below resolves). Licensed GPL-2.0-or-later.
 
 ### Install the plugin
 Add this repository in Jellyfin (Dashboard → Plugins → Repositories → +):

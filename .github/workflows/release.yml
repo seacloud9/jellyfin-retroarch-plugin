@@ -93,5 +93,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd artifacts/release
-          gh release create "${GITHUB_REF_NAME}" --title "RetroBridge ${GITHUB_REF_NAME#v}" --notes-file NOTES.md --prerelease \
+          gh release create "${GITHUB_REF_NAME}" --title "RetroBridge ${GITHUB_REF_NAME#v}" --notes-file NOTES.md --latest \
             $(ls | grep -v '^NOTES.md$')
