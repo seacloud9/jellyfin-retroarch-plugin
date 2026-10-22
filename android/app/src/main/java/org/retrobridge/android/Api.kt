@@ -30,7 +30,7 @@ class Api(server: String, private val deviceId: String, private val token: Strin
 
     private fun authorization(): String {
         val device = Build.MODEL.filter { it.isLetterOrDigit() }.ifEmpty { "Android" }
-        return "MediaBrowser Client=\"RetroBridge Android\", Device=\"$device\", DeviceId=\"$deviceId\", Version=\"0.1.0\"" +
+        return "MediaBrowser Client=\"RetroBridge Android\", Device=\"$device\", DeviceId=\"$deviceId\", Version=\"${BuildConfig.VERSION_NAME}\"" +
             (token?.let { ", Token=\"$it\"" } ?: "")
     }
 

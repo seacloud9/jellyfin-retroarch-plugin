@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><Version>0.1.0</Version></PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Jellyfin.Controller" Version="12.1.0" ExcludeAssets="runtime" />

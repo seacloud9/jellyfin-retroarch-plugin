@@ -1,7 +1,7 @@
 """Assemble release assets: plugin zip (with meta.json), companion archives, Android APK, Jellyfin repository manifest,
 release notes, and SHA256SUMS in artifacts/release/.
 
-Usage: python3 scripts/build-release.py --tag v0.1.0 [--repo owner/name] [--base-url URL] [--apk PATH] [--companions DIR]
+Usage: python3 scripts/build-release.py --tag vX.Y.Z [--repo owner/name] [--base-url URL] [--apk PATH] [--companions DIR]
 --base-url overrides where the manifest points (default: the GitHub release download URL), e.g. for a local test server.
 """
 import argparse

@@ -493,7 +493,7 @@ def main():
     args = parser.parse_args()
     if bool(args.native_executable) != bool(args.native_core):
         parser.error('--native-executable and --native-core must be supplied together')
-    archive = REPO / 'artifacts/RetroBridge-0.1.0.zip'
+    from version import PLUGIN_ARCHIVE as archive
     if not archive.is_file():
         parser.error('Build and run scripts/package-plugin.py first')
     docker('info', '--format', '{{.ServerVersion}}')

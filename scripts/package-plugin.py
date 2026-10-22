@@ -7,7 +7,9 @@ repo = Path(__file__).resolve().parents[1]
 source = repo / 'src/Jellyfin.Plugin.RetroBridge/bin/Release/net10.0'
 output = repo / 'artifacts'
 output.mkdir(exist_ok=True)
-archive = output / 'RetroBridge-0.1.0.zip'
+import sys
+sys.path.insert(0, str(repo / 'scripts'))
+from version import PLUGIN_ARCHIVE as archive  # noqa: E402
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
     for name in ['Jellyfin.Plugin.RetroBridge.dll', 'RetroBridge.Domain.dll']:
         data = (source / name).read_bytes()

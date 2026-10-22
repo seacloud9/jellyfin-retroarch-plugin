@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO / 'scripts'))
 spec = importlib.util.spec_from_file_location('smoke', REPO / 'scripts/jellyfin-smoke.py')
 smoke = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smoke)
+from version import PLUGIN_ARCHIVE  # noqa: E402
 from fixture_rom import write_fixture, write_gb_fixture
 
 
@@ -37,7 +38,7 @@ def main():
         workspace = Path(directory)
         plugin = workspace / 'config/plugins/RetroBridge'
         plugin.mkdir(parents=True)
-        with zipfile.ZipFile(REPO / 'artifacts/RetroBridge-0.1.0.zip') as package:
+        with zipfile.ZipFile(PLUGIN_ARCHIVE) as package:
             for name in ('Jellyfin.Plugin.RetroBridge.dll', 'RetroBridge.Domain.dll'):
                 (plugin / name).write_bytes(package.read(name))
         write_fixture(workspace / 'games/save-counter.nes')

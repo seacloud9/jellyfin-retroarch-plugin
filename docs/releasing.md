@@ -1,11 +1,12 @@
 # Releasing
 
-1. Update `<Version>` in `Directory.Build.props` (for example `0.2.0`) and commit it to `main`. CI must pass.
+1. Update `<Version>` in `Directory.Build.props`, the only place the version lives (scripts read it via `scripts/version.py`), and `versionCode`/`versionName` in `android/app/build.gradle.kts`. Commit to `main`; CI must pass.
 2. Tag and push: `git tag -a v0.2.0 -m "RetroBridge 0.2.0" && git push origin v0.2.0`.
 3. `.github/workflows/release.yml` then:
    - builds and verifies the companion for all five runtimes (one verified per OS without .NET), and builds, tests, and lints the Android APK;
    - checks that the tag matches `<Version>`;
    - installs the plugin into a fresh Jellyfin through its repository flow (`scripts/repository-smoke.py`), against the exact assets being released;
+   - upgrades a Jellyfin running the current public release to the new one, and checks that settings and the catalog survive;
    - publishes the GitHub release, marked **latest**, with the plugin zip (with `meta.json`), companion archives, debug APK, `manifest.json`, and `SHA256SUMS`.
 
 Nothing is published if any step fails. Fix the problem and push the tag again: delete it with `git push origin :refs/tags/vX.Y.Z`, re-tag, and push.

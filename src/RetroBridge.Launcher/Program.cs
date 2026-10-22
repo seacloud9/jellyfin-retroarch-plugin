@@ -238,7 +238,7 @@ static HttpClient CreateClient(Uri server, string? token, string deviceId)
     // Jellyfin 12.1 ignores X-Emby-Token; it requires the MediaBrowser Authorization scheme.
     // Jellyfin binds access tokens to DeviceId, so pairing and later requests must use the same one.
     client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization",
-        $"MediaBrowser Client=\"RetroBridge\", Device=\"{new string(Environment.MachineName.Where(char.IsAsciiLetterOrDigit).ToArray())}\", DeviceId=\"{deviceId}\", Version=\"0.1.0\"" +
+        $"MediaBrowser Client=\"RetroBridge\", Device=\"{new string(Environment.MachineName.Where(char.IsAsciiLetterOrDigit).ToArray())}\", DeviceId=\"{deviceId}\", Version=\"{typeof(Game).Assembly.GetName().Version?.ToString(3)}\"" +
         (token is null ? "" : $", Token=\"{token}\""));
     return client;
 }

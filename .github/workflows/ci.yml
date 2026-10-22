@@ -55,9 +55,9 @@ jobs:
         shell: bash
         run: |
           case "${{ runner.os }}" in
-            macOS) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-osx-arm64.tar.gz ;;
-            Windows) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-win-x64.zip ;;
-            *) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-0.1.0-linux-x64.tar.gz --jellyfin-linux-docker ;;
+            macOS) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-*-osx-arm64.tar.gz ;;
+            Windows) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-*-win-x64.zip ;;
+            *) python scripts/verify-companion-package.py artifacts/companion/RetroBridge-Companion-*-linux-x64.tar.gz --jellyfin-linux-docker ;;
           esac
       - uses: actions/upload-artifact@v4
         with:
@@ -70,8 +70,8 @@ jobs:
         with:
           name: retrobridge-${{ runner.os }}
           path: |
-            artifacts/RetroBridge-0.1.0.zip
-            artifacts/RetroBridge-0.1.0.zip.sha256
+            artifacts/RetroBridge-*.zip
+            artifacts/RetroBridge-*.zip.sha256
             src/RetroBridge.Launcher/bin/Release/net10.0/
   android:
     runs-on: ubuntu-latest

@@ -15,7 +15,8 @@ import tarfile
 import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
-VERSION = '0.1.0'
+sys.path.insert(0, str(REPO / 'scripts'))
+from version import VERSION  # noqa: E402
 RIDS = ['osx-arm64', 'osx-x64', 'win-x64', 'linux-x64', 'linux-arm64']
 QUICKSTART = """RetroBridge Companion {version} ({rid})
 ==========================================

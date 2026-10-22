@@ -86,6 +86,8 @@ jobs:
           path: artifacts/android
       - name: Jellyfin installs the plugin through its repository flow
         run: python scripts/repository-smoke.py --tag "${GITHUB_REF_NAME}"
+      - name: Jellyfin upgrades from the current public release, keeping settings and catalog
+        run: python scripts/repository-smoke.py --tag "${GITHUB_REF_NAME}" --upgrade-from "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/manifest.json"
       - name: Assemble release assets
         run: python scripts/build-release.py --tag "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --apk artifacts/android/app-debug.apk
       - name: Publish the GitHub release

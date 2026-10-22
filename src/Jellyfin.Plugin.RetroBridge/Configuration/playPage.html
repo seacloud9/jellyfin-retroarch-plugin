@@ -87,7 +87,7 @@
     } catch (_) { return null; }
   }
   function header() {
-    return 'MediaBrowser Client="RetroBridge Web", Device="Browser", DeviceId="retrobridge-web", Version="0.1.0", Token="' + auth + '"';
+    return 'MediaBrowser Client="RetroBridge Web", Device="Browser", DeviceId="retrobridge-web", Version="0.2.0", Token="' + auth + '"';
   }
   async function api(method, path, body) {
     var response = await fetch(path, { method: method, headers: Object.assign({ Authorization: header() }, body ? { 'Content-Type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });

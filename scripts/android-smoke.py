@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO / 'scripts'))
 spec = importlib.util.spec_from_file_location('smoke', REPO / 'scripts/jellyfin-smoke.py')
 smoke = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smoke)
+from version import PLUGIN_ARCHIVE  # noqa: E402
 
 APK = REPO / 'android/app/build/outputs/apk/debug/app-debug.apk'
 APP = 'org.retrobridge.android'
@@ -116,7 +117,7 @@ def main():
         plugin = workspace / 'config/plugins/RetroBridge'
         plugin.mkdir(parents=True)
         import zipfile
-        with zipfile.ZipFile(REPO / 'artifacts/RetroBridge-0.1.0.zip') as package_zip:
+        with zipfile.ZipFile(PLUGIN_ARCHIVE) as package_zip:
             for name in ('Jellyfin.Plugin.RetroBridge.dll', 'RetroBridge.Domain.dll'):
                 (plugin / name).write_bytes(package_zip.read(name))
         smoke.write_fixture(workspace / 'games/save-counter.nes')
