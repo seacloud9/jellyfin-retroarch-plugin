@@ -1,0 +1,97 @@
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+jobs:
+  companion:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            rids: osx-arm64 osx-x64
+            verify: RetroBridge-Companion-*-osx-arm64.tar.gz
+          - os: windows-latest
+            rids: win-x64
+            verify: RetroBridge-Companion-*-win-x64.zip
+          - os: ubuntu-latest
+            rids: linux-x64 linux-arm64
+            verify: RetroBridge-Companion-*-linux-x64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: dotnet restore --locked-mode
+      - run: dotnet build -c Release --no-restore
+      - name: Package and verify the companion without .NET
+        shell: bash
+        run: |
+          for rid in ${{ matrix.rids }}; do python scripts/package-companion.py --rid "$rid"; done
+          python scripts/verify-companion-package.py artifacts/companion/${{ matrix.verify }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.os }}
+          path: |
+            artifacts/companion/*.tar.gz
+            artifacts/companion/*.zip
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - working-directory: android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    needs: [companion, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Tag matches the project version
+        run: |
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+          test "v$version" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match version $version"; exit 1; }
+      - run: dotnet restore --locked-mode
+      - run: dotnet build -c Release --no-restore
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: companion-*
+          path: artifacts/companion
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: artifacts/android
+      - name: Jellyfin installs the plugin through its repository flow
+        run: python scripts/repository-smoke.py --tag "${GITHUB_REF_NAME}"
+      - name: Assemble release assets
+        run: python scripts/build-release.py --tag "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --apk artifacts/android/app-debug.apk
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd artifacts/release
+          gh release create "${GITHUB_REF_NAME}" --title "RetroBridge ${GITHUB_REF_NAME#v}" --notes-file NOTES.md --prerelease \
+            $(ls | grep -v '^NOTES.md$')

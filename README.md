@@ -21,7 +21,17 @@ python3 scripts/package-plugin.py
 
 The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/builds on macOS, Windows, and Linux; the process-substitute smoke test currently runs on macOS/Linux.
 
-## Install the prototype
+## Install the plugin
+
+**From Jellyfin's catalog (recommended):** Dashboard → Plugins → Repositories → **+**, and add:
+
+```
+https://github.com/seacloud9/jellyfin-retroarch-plugin/releases/latest/download/manifest.json
+```
+
+Install **RetroBridge** from the catalog, restart Jellyfin, and open Dashboard → Plugins → RetroBridge. Updates appear in the catalog with each release.
+
+## Install the prototype manually
 
 1. Use a **test Jellyfin 12.1.0 server**. Loading is verified in Docker (see the [verification record](docs/verification.md)); this is still a prototype.
 2. Stop Jellyfin. Create a `RetroBridge` directory under its configured plugins directory.
@@ -36,7 +46,7 @@ Scans hash only new or changed files, identified by size and modification time; 
 
 ## Install the companion
 
-Download the archive for your computer from the latest CI run's `retrobridge-companion-*` artifacts. Packages exist for `osx-arm64`, `osx-x64`, `win-x64`, `linux-x64`, and `linux-arm64`; check each against its `.sha256`. Extract it anywhere. It contains one self-contained `RetroBridge.Launcher` executable (no .NET needed) and a `QUICKSTART.txt`. To build one yourself: `python3 scripts/package-companion.py --rid <rid>`.
+Download the archive for your computer from the [latest release](https://github.com/seacloud9/jellyfin-retroarch-plugin/releases/latest) (or a CI run's `retrobridge-companion-*` artifacts). Packages exist for `osx-arm64`, `osx-x64`, `win-x64`, `linux-x64`, and `linux-arm64`; check each against its `.sha256`. Extract it anywhere. It contains one self-contained `RetroBridge.Launcher` executable (no .NET needed) and a `QUICKSTART.txt`. To build one yourself: `python3 scripts/package-companion.py --rid <rid>`.
 
 macOS builds are not signed or notarized. If macOS blocks the first run, use `xattr -d com.apple.quarantine RetroBridge.Launcher`. Windows SmartScreen may also warn about an unsigned executable. Keep the executable where you extracted it before running `register` or `autostart on`, because they record its path.
 
@@ -111,8 +121,12 @@ Still required before a usable beta:
 - Native RetroArch save/restart tests on Windows.
 - Descriptions and other metadata.
 - Packaged companion installers (it currently runs from a .NET build).
-- Signed/notarized installers, a Jellyfin plugin repository manifest, and published releases.
+- Signed/notarized installers and a release-signed Android APK.
 
 Phones work as remotes for a listening computer. **Android** can also play on the phone itself with the prototype companion in `android/` (build with `./gradlew :app:assembleDebug`). iOS can only act as a remote. Android is verified on the emulator only; a real-phone test is pending ([checklist](docs/manual-smoke.md#pending-real-android-phone-next)). See [mobile support](docs/mobile.md).
 
 See [architecture notes](docs/architecture.md), the [verification record](docs/verification.md), and the [manual smoke checklist](docs/manual-smoke.md). The vertical-slice milestone passed on macOS arm64 on October 21, 2026: a fixture game served by real Jellyfin 12.1.0 launched in RetroArch/Nestopia and its battery save survived a restart. The same test passes on Linux in Docker ([setup and teardown](docs/linux-native-docker.md)). Windows native runs remain open.
+
+## License
+
+GPL-2.0-or-later. See [LICENSE](LICENSE).
