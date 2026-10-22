@@ -424,21 +424,12 @@ internal sealed record UserIdentity(string? Id);
 internal sealed record QuickConnectState(string Secret, string Code, bool Authenticated);
 internal sealed record AuthenticationResult(string? AccessToken);
 
-// The device's access token, stored owner-only (Unix) in the data directory.
+// The device's access token, readable only by the current user (all OSes) in the data directory.
 internal sealed record Pairing(string Server, string DeviceId, string Token)
 {
     private static string PathIn(string data) => Path.Combine(Path.GetFullPath(data), "pairing.json");
 
-    public static void Save(string data, Pairing pairing)
-    {
-        Directory.CreateDirectory(Path.GetFullPath(data));
-        var path = PathIn(data);
-        var temporary = path + ".tmp";
-        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
-        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        using (var stream = new FileStream(temporary, options)) JsonSerializer.Serialize(stream, pairing);
-        File.Move(temporary, path, true);
-    }
+    public static void Save(string data, Pairing pairing) => SecureFile.WriteAllText(PathIn(data), JsonSerializer.Serialize(pairing));
 
     public static Pairing Load(string data)
     {

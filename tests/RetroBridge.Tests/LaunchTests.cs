@@ -92,3 +92,23 @@ public sealed class SaveSyncTests
     [InlineData("nes-abc.srm/../../x", false)]
     public void OnlyBatterySavesForTheGameAreSynced(string name, bool expected) => Assert.Equal(expected, SaveSync.IsSyncedName("nes-abc", name));
 }
+
+public sealed class SecureFileTests
+{
+    [Fact]
+    public void SecretsAreReadableOnlyByTheCurrentUser()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "retrobridge-secure-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var path = Path.Combine(directory, "pairing.json");
+            SecureFile.WriteAllText(path, "{\"Token\":\"secret\"}");
+            Assert.Equal("{\"Token\":\"secret\"}", File.ReadAllText(path));
+            Assert.True(SecureFile.IsPrivate(path));
+            SecureFile.WriteAllText(path, "{\"Token\":\"rotated\"}");
+            Assert.True(SecureFile.IsPrivate(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+}
