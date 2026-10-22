@@ -28,10 +28,20 @@
   .notice { margin-bottom: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
   code { overflow-wrap: anywhere; }
   button.browser { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; cursor: pointer; }
-  #player { position: fixed; inset: 0; background: #000; color: #eee; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 16px; z-index: 10; touch-action: none; }
-  #player canvas { width: 100%; max-width: 720px; max-height: 58vh; object-fit: contain; image-rendering: pixelated; background: #000; outline: none; border: 0; }
-  #player-status { min-height: 1.4em; margin: 0; font-size: .9rem; color: #aaa; text-align: center; }
-  .pad { width: 100%; max-width: 520px; display: flex; justify-content: space-between; align-items: center; user-select: none; -webkit-user-select: none; }
+  #player { position: fixed; inset: 0; background: #000; color: #eee; z-index: 10; touch-action: none; user-select: none; -webkit-user-select: none;
+    display: grid; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
+    grid-template: "screen screen" auto "status status" auto "dpad actions" auto "system system" auto "exit exit" auto / 1fr 1fr; align-content: start; justify-items: center; }
+  #player canvas { grid-area: screen; width: 100%; max-width: 720px; max-height: 58vh; object-fit: contain; image-rendering: pixelated; background: #000; outline: none; border: 0; }
+  #player-status { grid-area: status; min-height: 1.4em; margin: 0; font-size: .9rem; color: #aaa; text-align: center; }
+  .dpad { grid-area: dpad; justify-self: start; }
+  .actions { grid-area: actions; justify-self: end; align-self: center; }
+  .system { grid-area: system; }
+  .controls-end { grid-area: exit; display: flex; gap: 12px; }
+  /* Phones held sideways: controls either side of the screen. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #player { grid-template: "dpad screen actions" 1fr "status status status" auto "system system system" auto "exit exit exit" auto / auto 1fr auto; align-content: stretch; align-items: center; }
+    #player canvas { max-height: 72vh; }
+  }
   .dpad { display: grid; grid-template: repeat(3, 52px) / repeat(3, 52px); }
   .pad button, .system button { background: #2a2a31; color: #eee; border: 0; border-radius: 10px; font-weight: 700; touch-action: none; }
   .pad button:active, .pad button.down, .system button.down { background: #45454f; }
@@ -41,7 +51,7 @@
   .system button { padding: 8px 14px; font-size: .8rem; }
   details.diagnostics { margin-top: 32px; font-size: .85rem; color: var(--muted); }
   details.diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); }
-  #exit { background: transparent; border: 1px solid #555; color: #eee; padding: 8px 18px; border-radius: 6px; }
+  #exit, #fullscreen { background: transparent; border: 1px solid #555; color: #eee; padding: 8px 18px; border-radius: 6px; }
 </style>
 </head><body><main>
   <h1>RetroBridge</h1>
@@ -66,16 +76,14 @@
 <div id="player" hidden>
   <canvas id="screen"></canvas>
   <p id="player-status" role="status" aria-live="polite"></p>
-  <div class="pad">
-    <div class="dpad">
-      <span></span><button data-button="up" aria-label="Up">▲</button><span></span>
-      <button data-button="left" aria-label="Left">◀</button><span></span><button data-button="right" aria-label="Right">▶</button>
-      <span></span><button data-button="down" aria-label="Down">▼</button><span></span>
-    </div>
-    <div class="actions"><button class="round" data-button="b">B</button><button class="round" data-button="a">A</button></div>
+  <div class="dpad pad">
+    <span></span><button data-button="up" aria-label="Up">▲</button><span></span>
+    <button data-button="left" aria-label="Left">◀</button><span></span><button data-button="right" aria-label="Right">▶</button>
+    <span></span><button data-button="down" aria-label="Down">▼</button><span></span>
   </div>
+  <div class="actions pad"><button class="round" data-button="b">B</button><button class="round" data-button="a">A</button></div>
   <div class="system"><button data-button="select">SELECT</button><button data-button="start">START</button></div>
-  <button id="exit" type="button">Save and exit</button>
+  <div class="controls-end"><button id="fullscreen" type="button" hidden>Fullscreen</button><button id="exit" type="button">Save and exit</button></div>
 </div>
 <script>
 (function () {
@@ -193,9 +201,15 @@
   }
   function same(a, b) { if (!a || !b || a.length !== b.length) return false; for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
   function playerStatus(text) { $('player-status').textContent = text; }
-  async function flush(keepalive) {
-    if (!emulator || !playing || playing.flushing) return;
-    playing.flushing = true;
+  // Saves run one at a time; a request during a save waits for it and then saves the latest state.
+  function flush(keepalive) {
+    if (!emulator || !playing) return Promise.resolve();
+    var current = playing;
+    current.pending = (current.pending || Promise.resolve()).then(function () { return saveNow(current, keepalive); });
+    return current.pending;
+  }
+  async function saveNow(playing, keepalive) {
+    if (!emulator) return;
     try {
       var bytes = new Uint8Array(await (await emulator.saveSRAM()).arrayBuffer());
       if (!bytes.length || same(bytes, playing.last)) return;
@@ -212,9 +226,13 @@
       window.__browserPlay = { booted: true, revision: playing.revision };
       playerStatus('Saved to your server.');
     } catch (error) { note('save', error.message); playerStatus('Could not save to the server; will retry.'); }
-    finally { playing.flushing = false; }
   }
-  async function playInBrowser(game) {
+  var wakeLock = null;
+  async function keepAwake() {
+    try { if (navigator.wakeLock && emulator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (error) { note('wake lock', error.message); }
+  }
+  async function playInBrowser(game, fromLink) {
     $('player').hidden = false; playerStatus('Loading ' + game.Title + '…');
     try {
       await loadNostalgist();
@@ -237,7 +255,10 @@
       playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
       window.__browserPlay = { booted: true, revision: revision };
       diag.browser = game.Title + ' on ' + core + ' · booted · server save revision ' + revision;
-      playerStatus(server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.');
+      playerStatus((server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.') +
+        // Opening from a link is not a tap, so iOS keeps audio off until the first touch.
+        (fromLink && ios ? ' Tap the screen once to turn on sound.' : ''));
+      keepAwake();
     } catch (error) {
       window.__browserPlay = { error: error.message };
       note('browser play', game.Title + ': ' + error.message);
@@ -248,11 +269,22 @@
   async function exitPlayer() {
     if (playing) { clearInterval(playing.timer); await flush(false); }
     if (emulator) { try { emulator.exit({ removeCanvas: false }); } catch (_) {} }
+    if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+    if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
     emulator = null; playing = null; $('player').hidden = true;
     try { saved = await api('GET', 'Saves'); } catch (_) {}
     render();
   }
-  $('exit').addEventListener('click', exitPlayer);
+  $('exit').addEventListener('click', async function () { this.disabled = true; playerStatus('Saving…'); try { await exitPlayer(); } finally { this.disabled = false; } });
+  // iPhone Safari has no element fullscreen; show the button only where it works.
+  if (document.documentElement.requestFullscreen) {
+    $('fullscreen').hidden = false;
+    $('fullscreen').addEventListener('click', function () {
+      if (document.fullscreenElement) document.exitFullscreen(); else $('player').requestFullscreen().catch(function (e) { note('fullscreen', e.message); });
+    });
+  }
+  window.addEventListener('gamepadconnected', function (e) { if (emulator) playerStatus('Controller connected: ' + e.gamepad.id.slice(0, 40)); note('gamepad', 'connected ' + e.gamepad.id.slice(0, 60)); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') keepAwake(); });
   // iOS suspends hidden tabs: save whenever the page is hidden.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(true); });
   window.addEventListener('pagehide', function () { flush(true); });
@@ -289,7 +321,7 @@
       // #play=<game id> opens a game directly in the browser (shareable link).
       var direct = /^#play=([a-z]+-[0-9a-f]{64})$/.exec(location.hash);
       var target = direct && games.filter(function (g) { return g.Id === direct[1]; })[0];
-      if (target && web.Enabled && web.Platforms.includes(target.Platform)) playInBrowser(target);
+      if (target && web.Enabled && web.Platforms.includes(target.Platform)) playInBrowser(target, true);
     } catch (error) {
       setup([error.status === 403 ? 'Your account does not have access to RetroBridge. Ask an administrator.' : error.status === 401 ? 'Your Jellyfin session expired. Sign in again, then reload.' : 'RetroBridge is unavailable right now.']);
     }
@@ -305,7 +337,7 @@
       'Selected device: ' + (device ? device.Name : 'none'),
       'In-browser play: ' + (web.Enabled ? 'on for ' + web.Platforms.join('/') : 'off') + ' · WebAssembly: ' + (typeof WebAssembly === 'object') + ' · WebGL2: ' + !!document.createElement('canvas').getContext('webgl2'),
       'Last launch: ' + (diag.lastLaunch || 'none'),
-      'Browser play: ' + (diag.browser || 'not started'),
+      'Browser play: ' + (diag.browser || 'not started') + ' · wake lock: ' + ('wakeLock' in navigator) + ' · gamepads: ' + (navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean).length : 'n/a'),
       'Recent problems:' + (diag.errors.length ? '\n  ' + diag.errors.join('\n  ') : ' none'),
     ].join('\n');
   }

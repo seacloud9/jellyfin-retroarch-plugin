@@ -31,6 +31,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ios', action='store_true', help='Drive the booted iOS simulator (macOS only)')
     parser.add_argument('--port', type=int, default=8098)
+    parser.add_argument('--keep-seconds', type=int, default=0, help='After the checks, keep the server up (for a manual look)')
     args = parser.parse_args()
     container = 'retrobridge-browser-' + uuid.uuid4().hex[:12]
     summary = {}
@@ -117,6 +118,9 @@ def main():
                     results[platform] = counters
                     subprocess.run(['xcrun', 'simctl', 'io', 'booted', 'screenshot', str(REPO / f'artifacts/browser-play-{platform}.png')], capture_output=True)
                 summary['ios_safari'] = results
+                if args.keep_seconds:
+                    print(f'Keeping the server up for {args.keep_seconds}s', flush=True)
+                    time.sleep(args.keep_seconds)
         finally:
             smoke.docker('rm', '-f', container)
     (REPO / 'artifacts/browser-play-smoke.json').write_text(json.dumps(summary, indent=2) + '\n')

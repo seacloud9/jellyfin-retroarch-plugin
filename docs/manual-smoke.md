@@ -14,7 +14,7 @@ Use v0.2.0 or later. Have the plugin page open on a computer. If anything fails,
 3. Sign in to Jellyfin in Safari, open the play page link, and press **Play in browser** on an NES game.
 4. Note: time to start, whether you hear sound (tap the screen once if not), and whether the touch buttons respond without zooming or scrolling the page.
 5. Play 1–2 minutes and make an in-game save if the game has one. Switch to another app for 30 seconds, come back, and check the game continued. Press **Save and exit**.
-6. Open the game again: the save must be there. Rotate the phone once and note how the layout looks.
+6. Open the game again: the save must be there. Rotate the phone sideways: the D-pad should sit left of the game and A/B right (not yet seen on a device). Leave the phone untouched for 2 minutes: the screen should stay on.
 7. Repeat steps 3–6 quickly with a Game Boy game.
 
 **Android phone (5 min)**
