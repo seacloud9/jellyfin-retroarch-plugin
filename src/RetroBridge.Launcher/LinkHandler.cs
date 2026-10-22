@@ -45,6 +45,17 @@ internal static class LinkHandler
         throw new PlatformNotSupportedException("Link registration supports Windows, macOS, and Linux.");
     }
 
+    public static bool IsRegistered()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + LaunchLink.Scheme + @"\shell\open\command");
+            return key?.GetValue("") is string command && command.Contains(AppHost, StringComparison.OrdinalIgnoreCase);
+        }
+        if (OperatingSystem.IsMacOS()) return Directory.Exists(MacApp);
+        return File.Exists(LinuxDesktopFile) && File.ReadAllText(LinuxDesktopFile).Contains(AppHost, StringComparison.Ordinal);
+    }
+
     public static string Unregister()
     {
         if (OperatingSystem.IsWindows())

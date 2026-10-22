@@ -312,6 +312,10 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
             if rejected.returncode != 1 or 'invalid or expired' not in rejected.stderr:
                 raise AssertionError(f'{name} ticket was not rejected')
         verify_one_click(server, ordinary, user_id, device, data, stub_core, os_handler, summary)
+        doctor = companion('doctor', '--data', str(data))
+        if doctor.returncode or 'All essential checks passed' not in doctor.stdout or 'RetroBridge plugin' not in doctor.stdout:
+            raise AssertionError('doctor reported problems on a working setup:\n' + doctor.stdout + doctor.stderr)
+        summary['doctor'] = True
         verify_save_conflict(server, ordinary, game, Path(directory), stub_core)
         summary['save_sync_conflict'] = True
 

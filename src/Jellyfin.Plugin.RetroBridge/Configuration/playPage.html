@@ -39,6 +39,8 @@
   .actions .round { width: 64px; height: 64px; border-radius: 50%; }
   .system { display: flex; gap: 12px; }
   .system button { padding: 8px 14px; font-size: .8rem; }
+  details.diagnostics { margin-top: 32px; font-size: .85rem; color: var(--muted); }
+  details.diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); }
   #exit { background: transparent; border: 1px solid #555; color: #eee; padding: 8px 18px; border-radius: 6px; }
 </style>
 </head><body><main>
@@ -54,6 +56,12 @@
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="games"></ul>
   </div>
+<details class="diagnostics" id="diagnostics">
+  <summary>Diagnostics</summary>
+  <p>Share this report if something does not work. It contains no passwords or tokens.</p>
+  <button id="copy-report" type="button">Copy report</button>
+  <pre id="report"></pre>
+</details>
 <div id="player" hidden>
   <canvas id="screen"></canvas>
   <p id="player-status" role="status" aria-live="polite"></p>
@@ -71,6 +79,14 @@
 <script>
 (function () {
   var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {} };
+  // Diagnostics: recent errors and outcomes for the support report (no tokens are ever recorded).
+  var diag = { version: null, errors: [], lastLaunch: null, browser: null };
+  function note(kind, message) {
+    diag.errors.push(new Date().toISOString().slice(11, 19) + ' ' + kind + ': ' + String(message).slice(0, 300));
+    if (diag.errors.length > 20) diag.errors.shift();
+  }
+  window.addEventListener('error', function (e) { note('error', e.message); });
+  window.addEventListener('unhandledrejection', function (e) { note('rejection', e.reason && e.reason.message || e.reason); });
   // iOS cannot run a companion, so it can only send launches to a listening device. Android has its own companion app.
   var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var android = /Android/.test(navigator.userAgent);
@@ -149,11 +165,14 @@
     button.disabled = true; $('status').textContent = 'Preparing ' + game.Title + '…';
     try {
       var result = await api('POST', 'Games/' + encodeURIComponent(game.Id) + '/LaunchTicket', { DeviceId: device.Id });
+      diag.lastLaunch = game.Title + ' → ' + device.Name + (result.Delivered ? ' (sent to listener)' : ' (opened retrobridge:// link)');
       if (result.Delivered) { $('status').textContent = 'Sent to ' + device.Name + '. ' + game.Title + ' will start there in a few seconds.'; return; }
       $('status').textContent = android ? 'Opening RetroBridge for Android. If nothing happens, install and pair the RetroBridge app, or listen on ' + device.Name + '.'
         : 'Opening RetroBridge on this computer. If nothing happens, run the companion\'s register command, or listen on ' + device.Name + '.';
       window.location.href = 'retrobridge://launch?ticket=' + encodeURIComponent(result.Ticket);
     } catch (error) {
+      note('launch', game.Title + ': HTTP ' + (error.status || error.message));
+      diag.lastLaunch = game.Title + ' failed (' + (error.status || error.message) + ')';
       $('status').textContent = error.status === 403 ? 'Your access to RetroBridge was removed.' : 'Could not start the game. Try again.';
     } finally { setTimeout(function () { button.disabled = false; }, 3000); }
   }
@@ -188,9 +207,10 @@
       }
       if (!response.ok) throw new Error('HTTP ' + response.status);
       playing.revision = (await response.json()).Revision; playing.last = bytes;
+      diag.browser = playing.game.Title + ' on ' + web.Cores[playing.game.Platform] + ' · saved revision ' + playing.revision + ' at ' + new Date().toISOString().slice(11, 19);
       window.__browserPlay = { booted: true, revision: playing.revision };
       playerStatus('Saved to your server.');
-    } catch (_) { playerStatus('Could not save to the server; will retry.'); }
+    } catch (error) { note('save', error.message); playerStatus('Could not save to the server; will retry.'); }
     finally { playing.flushing = false; }
   }
   async function playInBrowser(game) {
@@ -215,9 +235,12 @@
       });
       playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
       window.__browserPlay = { booted: true, revision: revision };
+      diag.browser = game.Title + ' on ' + core + ' · booted · server save revision ' + revision;
       playerStatus(server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.');
     } catch (error) {
       window.__browserPlay = { error: error.message };
+      note('browser play', game.Title + ': ' + error.message);
+      diag.browser = game.Title + ' failed to start: ' + error.message;
       playerStatus('Could not start in the browser: ' + error.message + '.');
     }
   }
@@ -244,6 +267,7 @@
     auth = session();
     if (!auth) { setup(['Sign in to Jellyfin in this browser first, then reload this page.']); return; }
     try {
+      try { diag.version = (await api('GET', 'Info')).Version; } catch (_) {}
       devices = await api('GET', 'Devices');
       // Browsing works without a device; only Play needs one.
       if (!devices.length) {
@@ -268,6 +292,33 @@
       setup([error.status === 403 ? 'Your account does not have access to RetroBridge. Ask an administrator.' : error.status === 401 ? 'Your Jellyfin session expired. Sign in again, then reload.' : 'RetroBridge is unavailable right now.']);
     }
   }
+  function report() {
+    var device = devices.filter(function (d) { return d.Id === ($('device') && $('device').value); })[0];
+    return [
+      'RetroBridge plugin ' + (diag.version || 'unknown') + ' · ' + new Date().toISOString(),
+      'Browser: ' + navigator.userAgent,
+      'Platform: ' + (ios ? 'iOS' : android ? 'Android' : 'desktop') + ' · secure context: ' + window.isSecureContext + ' · touch points: ' + navigator.maxTouchPoints,
+      'Games visible: ' + games.length + ' · with art: ' + games.filter(function (g) { return g.HasArt; }).length,
+      'Paired devices: ' + devices.length + (devices.length ? ' (' + devices.map(function (d) { return d.Name + (d.Listening ? ' listening' : ''); }).join(', ') + ')' : ''),
+      'Selected device: ' + (device ? device.Name : 'none'),
+      'In-browser play: ' + (web.Enabled ? 'on for ' + web.Platforms.join('/') : 'off') + ' · WebAssembly: ' + (typeof WebAssembly === 'object') + ' · WebGL2: ' + !!document.createElement('canvas').getContext('webgl2'),
+      'Last launch: ' + (diag.lastLaunch || 'none'),
+      'Browser play: ' + (diag.browser || 'not started'),
+      'Recent problems:' + (diag.errors.length ? '\n  ' + diag.errors.join('\n  ') : ' none'),
+    ].join('\n');
+  }
+  $('diagnostics').addEventListener('toggle', function () { if (this.open) $('report').textContent = report(); });
+  $('copy-report').addEventListener('click', async function () {
+    var text = report(); $('report').textContent = text;
+    try { await navigator.clipboard.writeText(text); this.textContent = 'Copied'; }
+    catch (_) {
+      // Clipboard API needs HTTPS; fall back to selecting the text for a manual copy.
+      var range = document.createRange(); range.selectNodeContents($('report'));
+      var selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      try { document.execCommand('copy'); this.textContent = 'Copied'; } catch (_) { this.textContent = 'Select and copy the text below'; }
+    }
+    var button = this; setTimeout(function () { button.textContent = 'Copy report'; }, 3000);
+  });
   $('search').addEventListener('input', render);
   $('platform').addEventListener('change', render);
   start();

@@ -58,7 +58,7 @@ class MainActivity : Activity() {
         val current = Store(this).pairing
         if (current != null && Environment.isExternalStorageManager()) Thread {
             try { Syncer(this, Api(current.server, current.deviceId, current.token)).syncAll() }
-            catch (e: Exception) { Log.w(Player.TAG, "Save sync failed: ${e.message}") }
+            catch (e: Exception) { Log.w(Player.TAG, "Save sync failed: ${e.message}"); Store(this).lastProblem = "Save sync: ${e.message}" }
         }.start()
     }
 
@@ -70,6 +70,8 @@ class MainActivity : Activity() {
             appendLine(if (current == null) "Not paired." else "Paired with ${current.server}\nDevice: ${current.deviceId}")
             appendLine(if (retroArch == null) "RetroArch for Android is not installed." else "RetroArch: $retroArch")
             if (!Environment.isExternalStorageManager()) appendLine("All files access is needed so RetroArch can open downloaded games.")
+            appendLine("Version ${BuildConfig.VERSION_NAME}")
+            Store(this@MainActivity).lastProblem?.let { appendLine("\nLast problem: $it") }
         }
     }
 
@@ -97,6 +99,7 @@ class MainActivity : Activity() {
                 runOnUiThread { pairing = false; showState() }
             } catch (e: Exception) {
                 Log.w(Player.TAG, "Pairing failed", e)
+                Store(this).lastProblem = "Pairing: ${e.message}"
                 runOnUiThread { pairing = false; status.text = "Pairing failed: ${e.message}" }
             }
         }.start()

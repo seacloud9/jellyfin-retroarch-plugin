@@ -32,6 +32,7 @@ class LaunchActivity : Activity() {
 
     private fun done(message: String?) = runOnUiThread {
         Log.w(Player.TAG, "Launch failed: $message")
+        Store(this).lastProblem = "Launch: " + (message ?: "unknown error")
         Toast.makeText(this, message ?: "Could not start the game.", Toast.LENGTH_LONG).show()
         finish()
     }

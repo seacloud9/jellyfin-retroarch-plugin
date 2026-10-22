@@ -29,7 +29,11 @@ class Player(private val context: Context) {
         if (!Rules.verified(content, game)) { log("Downloading ${game.title}…"); api.download(game, content) }
         protectSaves(game, log)
         try { Syncer(context, api).syncGame(game.id, core.substringAfterLast('/'), log) }
-        catch (e: Exception) { log("Save sync skipped (${e.message}); playing with the save on this phone."); Log.w(TAG, "Save sync failed: ${e.message}") }
+        catch (e: Exception) {
+            log("Save sync skipped (${e.message}); playing with the save on this phone.")
+            Log.w(TAG, "Save sync failed: ${e.message}")
+            Store(context).lastProblem = "Save sync before launch: ${e.message}"
+        }
         val intent = Intent().apply {
             component = ComponentName(retroArch, "com.retroarch.browser.retroactivity.RetroActivityFuture")
             putExtra("ROM", content.absolutePath)

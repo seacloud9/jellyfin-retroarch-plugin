@@ -57,6 +57,8 @@ try
         case ["autostart", "off"]:
             Console.WriteLine(Autostart.Disable());
             return 0;
+        case ["doctor", .. var rest]:
+            return await Doctor(DataDirectory(Option(rest, "--data")));
         case ["autostart", "status"]:
             Console.WriteLine(Autostart.Status());
             return 0;
@@ -91,6 +93,7 @@ try
             Console.WriteLine("  RetroBridge.Launcher configure --retroarch <path> --core nes=<path> [--core gb=<path>] [--core gbc=<path>] [--data <dir>]");
             Console.WriteLine("  RetroBridge.Launcher register [--data <dir>]      (handle retrobridge:// links from the play page)");
             Console.WriteLine("  RetroBridge.Launcher unregister");
+            Console.WriteLine("  RetroBridge.Launcher doctor [--data <dir>]          (check pairing, server, RetroArch, cores, link handler, autostart)");
             Console.WriteLine("  RetroBridge.Launcher listen [--data <dir>]          (start games sent from any browser, including phones)");
             Console.WriteLine("  RetroBridge.Launcher autostart on|off|status [--data <dir>]   (listen automatically at login)");
             Console.WriteLine("  RetroBridge.Launcher open <retrobridge://launch?ticket=...> [--data <dir>]");
@@ -106,6 +109,74 @@ catch (Exception ex) when (ex is ArgumentException or FormatException or IOExcep
 {
     Console.Error.WriteLine("Failed: " + ex.Message);
     return 1;
+}
+
+// Checks everything the companion depends on and says how to fix what is wrong. Exit code 1 if anything essential fails.
+async Task<int> Doctor(string data)
+{
+    var failures = 0;
+    void Check(bool ok, string good, string bad, bool essential = true)
+    {
+        Console.WriteLine((ok ? "  ✓ " : essential ? "  ✗ " : "  ! ") + (ok ? good : bad));
+        if (!ok && essential) failures++;
+    }
+    var version = typeof(Game).Assembly.GetName().Version?.ToString(3);
+    Console.WriteLine($"RetroBridge companion {version} · {System.Runtime.InteropServices.RuntimeInformation.OSDescription} · data: {data}");
+    Check(Directory.Exists(data), "Data directory exists.", "Data directory missing. Run pair first.");
+
+    Pairing? pairing = null;
+    try { pairing = Pairing.Load(data); } catch (InvalidOperationException ex) { Check(false, "", ex.Message); }
+    if (pairing is not null)
+    {
+        Check(SecureFile.IsPrivate(Path.Combine(data, "pairing.json")), "Pairing token is readable only by you.", "pairing.json is readable by other users; run pair again to rewrite it.");
+        var server = ParseServer(pairing.Server);
+        using var client = CreateClient(server, pairing.Token, pairing.DeviceId);
+        client.Timeout = TimeSpan.FromSeconds(15);
+        try
+        {
+            using var info = await client.GetAsync("System/Info/Public", ct);
+            var body = await info.Content.ReadAsStringAsync(ct);
+            Check(info.IsSuccessStatusCode, $"Server reachable: {server} (Jellyfin {JsonDocument.Parse(body).RootElement.GetProperty("Version").GetString()}).", $"Server answered {(int)info.StatusCode}: {server}");
+            var user = await CurrentUser(client);
+            Check(true, $"Paired as user {user:N} on device {pairing.DeviceId}.", "");
+            using var plugin = await client.GetAsync("RetroBridge/Info", ct);
+            if (plugin.StatusCode == HttpStatusCode.Forbidden) Check(false, "", "Your account has no RetroBridge access. Ask an administrator to tick you under Players.");
+            else
+            {
+                // Jellyfin serializes PascalCase; read case-insensitively.
+                var details = await plugin.Content.ReadFromJsonAsync<PluginInfo>(json, ct);
+                Check(plugin.IsSuccessStatusCode && details is not null, $"RetroBridge plugin {details?.Version} · {details?.Games} games available.", $"RetroBridge plugin answered {(int)plugin.StatusCode}.");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized) { Check(false, "", "This device is no longer paired (revoked or expired). Run pair again."); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
+        { Check(false, "", $"Cannot reach {server}: {ex.Message}"); }
+    }
+
+    LocalSettings? settings = null;
+    try { settings = LocalSettings.Load(data); } catch (InvalidOperationException ex) { Check(false, "", ex.Message); }
+    if (settings is not null)
+    {
+        Check(File.Exists(settings.RetroArch), $"RetroArch found: {settings.RetroArch}", $"RetroArch not found at {settings.RetroArch}. Run configure --retroarch <path>.");
+        foreach (var platform in new[] { "nes", "gb", "gbc" })
+        {
+            var core = settings.Cores.GetValueOrDefault(platform);
+            Check(core is not null && File.Exists(core), $"{platform.ToUpperInvariant()} core: {core}",
+                core is null ? $"No {platform.ToUpperInvariant()} core configured (configure --core {platform}=<path>)." : $"{platform.ToUpperInvariant()} core missing: {core}", essential: core is not null);
+        }
+    }
+
+    Check(LinkHandler.IsRegistered(), "Play-page links open this companion.", "Play-page links are not registered. Run register for one-click play from this computer.", essential: false);
+    Console.WriteLine("  · " + Autostart.Status());
+    // A running listener holds listener.lock exclusively; never create the file just to probe it.
+    var lockPath = Path.Combine(data, "listener.lock");
+    var listening = false;
+    if (File.Exists(lockPath))
+        try { using var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException ex) when (ex is not FileNotFoundException and not DirectoryNotFoundException) { listening = true; }
+    Check(listening, "A listener is running: phones and other browsers can start games here.", "No listener running. Run listen or autostart on to play from your phone.", essential: false);
+    Console.WriteLine(failures == 0 ? "All essential checks passed." : $"{failures} problem(s) need fixing.");
+    return failures == 0 ? 0 : 1;
 }
 
 static string? Option(string[] args, string name) => Options(args, name).LastOrDefault();
@@ -421,6 +492,7 @@ static async Task<bool> Verified(string path, Game game, CancellationToken ct)
 }
 
 internal sealed record UserIdentity(string? Id);
+internal sealed record PluginInfo(string? Version, int Games);
 internal sealed record QuickConnectState(string Secret, string Code, bool Authenticated);
 internal sealed record AuthenticationResult(string? AccessToken);
 

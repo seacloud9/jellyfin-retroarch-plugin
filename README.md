@@ -77,6 +77,8 @@ Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in
 
 The link holds only the ticket. Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket, so a repeated click or a forwarded link does nothing. Tickets live in server memory; a Jellyfin restart invalidates outstanding ones. Simultaneous launches of the same game are refused by a per-game lock.
 
+**Troubleshooting:** `RetroBridge.Launcher doctor` checks pairing, the server and plugin, RetroArch and each core, the link handler, autostart, and the listener, and says how to fix each problem. The play page has a **Diagnostics** section with a **Copy report** button (no tokens included). The Android app shows the last problem on its main screen.
+
 Other commands: `launch <data-dir> <ticket> <retroarch> <core>` redeems a ticket with explicit paths. The development form `<server-url> <game-id> <retroarch> <core> <data-dir>` takes an existing user token from `RETROBRIDGE_TOKEN`.
 
 The launcher requires HTTPS except for loopback development servers and refuses redirects. It supports Jellyfin base paths, validates cached/downloaded content against SHA-256, limits content to 64 MiB, cleans up interrupted download files, and uses structured process arguments without a shell.
@@ -103,6 +105,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | GET | `/RetroBridge/Saves` | Player | Latest save per visible game: revision, time, and the saving device's name (or "another device") |
 | GET | `/RetroBridge/Games/{id}/Saves` | Player | The caller's server saves for the game (name, SHA-256, size, revision, modified, device) |
 | GET / PUT | `/RetroBridge/Games/{id}/Saves/{name}` | Player | Download / upload a battery save; PUT needs `?baseRevision=` (0 for new) and returns 409 with the current copy on conflict |
+| GET | `/RetroBridge/Info` | Player | Plugin version and number of visible games (diagnostics) |
 | GET | `/RetroBridge/Web/Config` | Player | In-browser play availability, platforms, and core per platform |
 | POST | `/RetroBridge/Web/Prepare` | Administrator | Download and verify the pinned emulator files |
 | GET | `/RetroBridge/Web/{file}` | Anonymous, only while enabled | The allow-listed emulator files |

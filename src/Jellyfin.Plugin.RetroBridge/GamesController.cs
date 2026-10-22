@@ -180,6 +180,12 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     }
 
     // Starts a background scan (202). ?wait=true waits for the result instead, for scripts and tests.
+    // Version for diagnostics and support reports.
+    [HttpGet("Info")]
+    public IActionResult Info() => CanPlay()
+        ? Ok(new { Version = typeof(GamesController).Assembly.GetName().Version?.ToString(3), Games = Visible().Count() })
+        : Forbid();
+
     // What the play page needs to offer in-browser play.
     [HttpGet("Web/Config")]
     public IActionResult BrowserConfig()

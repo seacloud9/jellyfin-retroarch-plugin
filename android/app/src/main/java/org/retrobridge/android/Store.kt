@@ -20,6 +20,11 @@ class Store(context: Context) {
     fun save(pairing: Pairing) = prefs.edit().putString("server", pairing.server).putString("device", pairing.deviceId).putString("token", pairing.token).commit()
     fun clear() = prefs.edit().clear().commit()
 
+    // Shown on the main screen so failures are visible without adb logcat.
+    var lastProblem: String?
+        get() = prefs.getString("lastProblem", null)
+        set(value) { prefs.edit().putString("lastProblem", value?.let { java.text.SimpleDateFormat("MMM d HH:mm", java.util.Locale.US).format(java.util.Date()) + " · " + it.take(300) }).apply() }
+
     companion object {
         fun newDeviceId() = "retrobridge-" + ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
     }
