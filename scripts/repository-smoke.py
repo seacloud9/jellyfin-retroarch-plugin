@@ -7,6 +7,7 @@ import argparse
 import functools
 import http.server
 import importlib.util
+import os
 from pathlib import Path
 import secrets
 import subprocess
@@ -42,7 +43,9 @@ def main():
     version = args.tag.removeprefix('v') + '.0'
     with tempfile.TemporaryDirectory(prefix='retrobridge-repo-') as directory:
         try:
-            smoke.docker('run', '-d', '--name', container, '--label', 'org.retrobridge.smoke=true', '-p', '127.0.0.1::8096',
+            # On Linux, bind-mounted files would otherwise be root-owned and block temp cleanup.
+            user = ['--user', f'{os.getuid()}:{os.getgid()}'] if sys.platform.startswith('linux') else []
+            smoke.docker('run', '-d', '--name', container, '--label', 'org.retrobridge.smoke=true', '-p', '127.0.0.1::8096', *user,
                          '--add-host', 'host.docker.internal:host-gateway',
                          '--mount', f'type=bind,src={directory},dst=/config', smoke.IMAGE)
             server = smoke.Server(smoke.host_url(container))
