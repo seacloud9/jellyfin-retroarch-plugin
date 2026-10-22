@@ -1,8 +1,9 @@
 # Releasing
 
-1. Update `<Version>` in `Directory.Build.props`, the only place the version lives (scripts read it via `scripts/version.py`), and `versionCode`/`versionName` in `android/app/build.gradle.kts`. Commit to `main`; CI must pass.
-2. Tag and push: `git tag -a v0.2.0 -m "RetroBridge 0.2.0" && git push origin v0.2.0`.
-3. `.github/workflows/release.yml` then:
+1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new `## [X.Y.Z] - YYYY-MM-DD` heading (the release fails without it).
+2. Update `<Version>` in `Directory.Build.props`, the only place the version lives (scripts read it via `scripts/version.py`), and `versionCode`/`versionName` in `android/app/build.gradle.kts`. Commit to `main`; CI must pass.
+3. Tag and push: `git tag -a v0.2.0 -m "RetroBridge 0.2.0" && git push origin v0.2.0`.
+4. `.github/workflows/release.yml` then:
    - builds and verifies the companion for all five runtimes (one verified per OS without .NET), and builds, tests, and lints the Android APK;
    - checks that the tag matches `<Version>`;
    - installs the plugin into a fresh Jellyfin through its repository flow (`scripts/repository-smoke.py`), against the exact assets being released;

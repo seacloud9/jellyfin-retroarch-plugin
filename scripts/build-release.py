@@ -38,7 +38,13 @@ def main():
     out.mkdir(parents=True)
     base_url = (args.base_url or f'https://github.com/{args.repo}/releases/download/{args.tag}').rstrip('/')
     timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    changelog = f'RetroBridge {version}. See https://github.com/{args.repo}/releases/tag/{args.tag}'
+    # The version's CHANGELOG.md section is required: it becomes the release's "What's new" and the catalog changelog.
+    import re
+    section = re.search(rf'^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)', (REPO / 'CHANGELOG.md').read_text(), re.S | re.M)
+    if not section or not section.group(1).strip():
+        parser.error(f'CHANGELOG.md has no section for {version}; add "## [{version}] - YYYY-MM-DD" with its changes')
+    whats_new = section.group(1).strip()
+    changelog = re.sub(r'\*\*|\[([^\]]+)\]\([^)]+\)', lambda m: m.group(1) or '', whats_new)  # plain text for Jellyfin's catalog
 
     # Plugin zip: plugin-owned assemblies plus meta.json, the layout Jellyfin installs from repositories.
     plugin_dir = REPO / 'src/Jellyfin.Plugin.RetroBridge/bin/Release/net10.0'
@@ -70,7 +76,10 @@ def main():
     names = sorted(p.name for p in out.iterdir() if p.is_file())
     (out / 'SHA256SUMS').write_text(''.join(f'{hashlib.sha256((out / n).read_bytes()).hexdigest()}  {n}\n' for n in names))
     assets = '\n'.join(f'- `{n}`' for n in names + ['SHA256SUMS'])
-    (out / 'NOTES.md').write_text(f"""RetroBridge {version} — **prototype** release for **Jellyfin {TARGET_ABI[:-2]}** (published as "latest" so the repository URL below resolves). Licensed GPL-2.0-or-later.
+    (out / 'NOTES.md').write_text(f"""### What's new in {version}
+{whats_new}
+
+RetroBridge {version} — **prototype** release for **Jellyfin {TARGET_ABI[:-2]}** (published as "latest" so the repository URL below resolves). Licensed GPL-2.0-or-later.
 
 ### Install the plugin
 Add this repository in Jellyfin (Dashboard → Plugins → Repositories → +):
@@ -84,6 +93,9 @@ Download the archive for your computer. It's self-contained, so no .NET is neede
 
 ### Android
 `RetroBridge-Android-{version}-debug.apk` is a debug-signed prototype for sideloading. It has been tested on the Android 17 emulator only, and needs RetroArch for Android plus "All files access".
+
+### Third-party software
+In-browser play (optional, off by default) makes the Jellyfin server download pinned open-source emulator files: RetroArch 1.22.2 (GPL-3.0) with FCEUmm (GPL-2.0-or-later) and mGBA (MPL-2.0) cores, plus Nostalgist 0.23.0 (MIT). They are not included in this release. Licenses and corresponding source: [docs/third-party.md](https://github.com/{args.repo}/blob/{args.tag}/docs/third-party.md).
 
 ### Status
 Verified against real Jellyfin 12.1 in Docker, real RetroArch on macOS and Linux, and the Android emulator. Pending: a real Android phone, Windows native RetroArch, and the dashboard in real jellyfin-web. See `docs/verification.md` and `docs/manual-smoke.md`.

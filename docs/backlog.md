@@ -52,7 +52,7 @@
 **Still open**
 1. A real Android phone: emulator Chrome could not render (see the spike results).
 2. Real-device feel: audio, latency, gamepads, rotation, background behavior (see manual-smoke.md).
-3. Distribute RetroArch/core source or a written offer alongside the downloadable build.
+3. ~~Source availability~~ done: [third-party.md](third-party.md) lists exact sources; the play page links it while in-browser play is on.
 4. Save states in the browser are not synced (battery saves only, as with the companions).
 
 ## Other items
