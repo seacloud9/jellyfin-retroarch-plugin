@@ -30,12 +30,23 @@
 - Core builds must match the Nostalgist version: cores from the repository's `main` failed (`getEmscripten is not a function`); the `v1.22.2` tag pinned by Nostalgist 0.23.0 works. Pin both together.
 - Pass absolute URLs for self-hosted cores.
 - The 128 MiB heap is fixed by the RetroArch build. That is the number to watch for low-memory devices and larger systems, not the game size.
-- **Licensing blocks bundling as-is:** the Emscripten build links RetroArch (GPL-3.0) into each core. GPL-3.0 is compatible with our GPL-2.0-or-later (the combined work would ship under GPL-3.0), but it rules out GPL-2.0-*only* cores such as Gambatte. Check each core's license (FCEUmm, Nestopia, QuickNES, mGBA, SameBoy) before choosing the Game Boy core, and ship the corresponding source.
+- **Licensing:** the Emscripten build links RetroArch (GPL-3.0) into each core, so bundled browser cores ship under GPL-3.0. That is compatible with our GPL-2.0-or-later, but every core must be compatible too. Audit from the license files and source headers (an engineering check, not legal advice):
+
+  | Core | License | Bundle in the WASM build? |
+  |---|---|---|
+  | FCEUmm (NES) | GPL-2.0-or-later | ✅ |
+  | Nestopia (NES) | GPL-2.0-or-later | ✅ |
+  | QuickNES (NES) | GPL-2.0-or-later | ✅ |
+  | mGBA (GB/GBC) | MPL-2.0 | ✅ (MPL-2.0 allows combination with GPL) |
+  | SameBoy (GB/GBC) | MIT | ✅ |
+  | Gambatte (GB/GBC) | GPL-2.0-**only** | ❌ cannot be combined with GPL-3.0 RetroArch. Use mGBA or SameBoy in the browser; native Gambatte is unaffected |
+
+  Distribute the corresponding source (or a written offer) for RetroArch and each bundled core with the plugin.
 - Audio, touch controls, and gamepad were not exercised in the simulator (audio needs a tap on iOS).
 
 **Next steps**
 1. Real Android phone: confirm rendering and the save round trip.
-2. License audit and core choice per platform.
+2. ~~License audit~~ done: browser cores are FCEUmm (NES) and mGBA or SameBoy (GB/GBC). Confirm the Emscripten builds of mGBA/SameBoy work with Nostalgist.
 3. Plugin integration behind the admin flag: serve the pinned files from the plugin, add **Play in browser**, and connect Nostalgist's `sram`/`saveSRAM()` to `/RetroBridge/Games/{id}/Saves`, flushing on `visibilitychange`.
 4. Touch controls and gamepad mapping; check audio on iOS after a tap.
 
