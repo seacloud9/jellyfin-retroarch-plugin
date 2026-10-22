@@ -3,6 +3,8 @@
 Each release's section becomes "What's new" in its GitHub release notes and the changelog in Jellyfin's plugin catalog. `scripts/build-release.py` requires a section for the version being released.
 
 ## [Unreleased]
+
+## [0.2.1] - 2026-10-22
 - `RetroBridge.Launcher doctor` checks pairing, the server and plugin, RetroArch, cores, the link handler, autostart, and the listener, with a fix for each problem.
 - The play page has a Diagnostics section with a token-free **Copy report**. The Android app shows its last problem and version.
 - The pairing token is now readable only by the current user on Windows too (it already was on macOS and Linux).
