@@ -1,6 +1,6 @@
 # Backlog
 
-## In-browser play (WASM) — experimental option
+## In-browser play (WASM) — experimental option (implemented, Oct 22)
 
 **Goal:** play from the play page with no install, the only route to play *on* iOS. It is an addition to native RetroArch, not a replacement.
 
@@ -44,11 +44,16 @@
   Distribute the corresponding source (or a written offer) for RetroArch and each bundled core with the plugin.
 - Audio, touch controls, and gamepad were not exercised in the simulator (audio needs a tap on iOS).
 
-**Next steps**
-1. Real Android phone: confirm rendering and the save round trip.
-2. ~~License audit~~ done: browser cores are FCEUmm (NES) and mGBA or SameBoy (GB/GBC). Confirm the Emscripten builds of mGBA/SameBoy work with Nostalgist.
-3. Plugin integration behind the admin flag: serve the pinned files from the plugin, add **Play in browser**, and connect Nostalgist's `sram`/`saveSRAM()` to `/RetroBridge/Games/{id}/Saves`, flushing on `visibilitychange`.
-4. Touch controls and gamepad mapping; check audio on iOS after a tap.
+**Implemented (Oct 22)**
+- Admin toggle, per-platform allow-list, and **Download emulator files** (pinned SHA-256, server-side). *Play in browser* with touch and keyboard controls. Saves through the server save API. CSP widened only when enabled. `#play=` deep links.
+- Game Boy confirmed with an original MBC1 save-counter fixture on mGBA. SameBoy has no build in the pinned repository; mGBA is the Game Boy core.
+- Verified in iOS 26.5 Safari (simulator) for NES and Game Boy, with saves reaching the server across two sessions each.
+
+**Still open**
+1. A real Android phone: emulator Chrome could not render (see the spike results).
+2. Real-device feel: audio, latency, gamepads, rotation, background behavior (see manual-smoke.md).
+3. Distribute RetroArch/core source or a written offer alongside the downloadable build.
+4. Save states in the browser are not synced (battery saves only, as with the companions).
 
 ## Other items
 

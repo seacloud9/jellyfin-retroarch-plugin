@@ -8,6 +8,14 @@
       <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
       <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
       <label><input type="checkbox" id="FetchArtwork" /> Fetch box art from thumbnails.libretro.com after scans (only this server contacts it)</label>
+      <fieldset><legend>In-browser play (experimental)</legend>
+        <label><input type="checkbox" id="BrowserPlay" /> Let players run games in their browser (needed on iPhone/iPad)</label><br />
+        <label><input type="checkbox" class="BrowserPlatform" value="nes" /> NES (FCEUmm)</label>
+        <label><input type="checkbox" class="BrowserPlatform" value="gb" /> Game Boy (mGBA)</label>
+        <label><input type="checkbox" class="BrowserPlatform" value="gbc" /> Game Boy Color (mGBA)</label>
+        <p>This server downloads pinned, checksum-verified emulator files (about 7 MB) from their open-source projects and serves them to players. Players never contact a third party.
+        <button is="emby-button" id="PrepareBrowser" type="button" class="raised">Download emulator files</button></p>
+      </fieldset>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
     </form>
     <p><button is="emby-button" id="ScanGames" type="button" class="raised">Scan saved folders</button>
@@ -119,7 +127,9 @@
       try { await navigator.clipboard.writeText(playUrl); status('Play page link copied.'); } catch (_) { status('Copy the link above manually.'); }
     });
     page.addEventListener('pageshow', async function () {
-      try { config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); page.querySelector('#FetchArtwork').checked = config.FetchArtwork !== false; await loadGames(); }
+      try { config = await ApiClient.getPluginConfiguration(pluginId); page.querySelector('#GameRoots').value = config.GameRoots.join('\n'); await renderPlayers(config.PlayerUserIds || []); page.querySelector('#FetchArtwork').checked = config.FetchArtwork !== false;
+        page.querySelector('#BrowserPlay').checked = !!config.BrowserPlay;
+        page.querySelectorAll('.BrowserPlatform').forEach(function (x) { x.checked = (config.BrowserPlatforms || []).includes(x.value); }); await loadGames(); }
       catch (_) { status('Unable to load RetroBridge. Check your administrator session and server logs.'); }
     });
     page.querySelector('#RetroBridgeForm').addEventListener('submit', async function (event) {
@@ -128,6 +138,8 @@
         config = await ApiClient.getPluginConfiguration(pluginId);
         config.GameRoots = page.querySelector('#GameRoots').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
         config.FetchArtwork = page.querySelector('#FetchArtwork').checked;
+        config.BrowserPlay = page.querySelector('#BrowserPlay').checked;
+        config.BrowserPlatforms = Array.from(page.querySelectorAll('.BrowserPlatform:checked')).map(function (x) { return x.value; });
         config.PlayerUserIds = Array.from(page.querySelectorAll('#PlayerList input:checked')).map(function (x) { return x.value; });
         await ApiClient.updatePluginConfiguration(pluginId, config); status('Settings saved. Scan to update the library.');
       } catch (_) { status('Could not save settings.'); }
@@ -153,6 +165,14 @@
     }
     page.querySelector('#ScanGames').addEventListener('click', function () { scan(this, false); });
     page.querySelector('#FullScan').addEventListener('click', function () { scan(this, true); });
+    page.querySelector('#PrepareBrowser').addEventListener('click', async function () {
+      this.disabled = true; status('Downloading and verifying emulator files…');
+      try {
+        var r = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RetroBridge/Web/Prepare'), dataType: 'json' });
+        status(r.Ready ? 'Emulator files ready. Save settings with in-browser play turned on.' : 'Emulator files incomplete.');
+      } catch (_) { status('Could not download the emulator files. Check that this server can reach cdn.jsdelivr.net.'); }
+      finally { this.disabled = false; }
+    });
     page.querySelector('#FetchArt').addEventListener('click', async function () {
       this.disabled = true; status('Fetching artwork…');
       try {

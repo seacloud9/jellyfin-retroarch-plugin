@@ -14,7 +14,7 @@ public sealed record AccessRequest(string[]? PlayerUserIds);
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, SaveStore saves, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, SaveStore saves, BrowserPlayService browser, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -172,12 +172,49 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     public IActionResult Play()
     {
         var stream = typeof(GamesController).Assembly.GetManifestResourceStream("Jellyfin.Plugin.RetroBridge.Configuration.playPage.html")!;
-        Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src blob:; frame-ancestors 'none'";
+        // In-browser play needs the emulator script from this server, blob: module imports of the core, and WebAssembly compilation.
+        var scripts = configuration().BrowserPlay ? "'unsafe-inline' 'self' blob: 'wasm-unsafe-eval'" : "'unsafe-inline'";
+        Response.Headers.ContentSecurityPolicy = $"default-src 'none'; script-src {scripts}; style-src 'unsafe-inline'; connect-src 'self' blob:; img-src blob:; frame-ancestors 'none'";
         Response.Headers.CacheControl = "no-store";
         return File(stream, "text/html; charset=utf-8");
     }
 
     // Starts a background scan (202). ?wait=true waits for the result instead, for scripts and tests.
+    // What the play page needs to offer in-browser play.
+    [HttpGet("Web/Config")]
+    public IActionResult BrowserConfig()
+    {
+        if (!CanPlay()) return Forbid();
+        var config = configuration();
+        return Ok(new
+        {
+            Enabled = config.BrowserPlay && browser.Ready,
+            Platforms = config.BrowserPlay ? config.BrowserPlatforms.Where(BrowserPlayService.Cores.ContainsKey) : [],
+            Cores = BrowserPlayService.Cores,
+        });
+    }
+
+    // Downloads the pinned emulator files (administrator action from the dashboard).
+    [HttpPost("Web/Prepare")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<IActionResult> PrepareBrowserPlay(CancellationToken cancellationToken)
+    {
+        try { await browser.PrepareAsync(cancellationToken); }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or TaskCanceledException)
+        { return StatusCode(StatusCodes.Status502BadGateway, new { Message = "Could not download the emulator files: " + ex.Message }); }
+        return Ok(new { browser.Ready });
+    }
+
+    // Open-source emulator files, served only while in-browser play is enabled. Pinned content, so cacheable.
+    [HttpGet("Web/{file}")]
+    [AllowAnonymous]
+    public IActionResult BrowserFile(string file)
+    {
+        if (!configuration().BrowserPlay || browser.Open(file) is not { } asset) return NotFound();
+        Response.Headers.CacheControl = "public, max-age=86400";
+        return File(asset.File, asset.ContentType);
+    }
+
     [HttpPost("Scan")]
     [Authorize(Policy = Policies.RequiresElevation)]
     public async Task<IActionResult> Scan([FromQuery] bool full, [FromQuery] bool wait, CancellationToken cancellationToken)

@@ -26,6 +26,7 @@ public sealed class ApiTests : IDisposable
     private readonly PluginConfiguration _configuration = new();
     private readonly TestTime _time = new();
     private int _saves;
+    private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets);
     private readonly ArtworkService _artwork = new(Path.Combine(Path.GetTempPath(), "retrobridge-art-" + Guid.NewGuid().ToString("N")));
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
@@ -36,6 +37,7 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton(new LaunchTickets(_time));
             services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton(_artwork);
+            services.AddSingleton(_browser);
             services.AddSingleton(new SaveStore(Path.Combine(Path.GetTempPath(), "retrobridge-saves-" + Guid.NewGuid().ToString("N"))));
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
@@ -456,6 +458,41 @@ public sealed class ApiTests : IDisposable
             Assert.Equal(HttpStatusCode.NotFound, (await Put([7], 3)).Status);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task BrowserPlayIsOffUntilEnabledAndPrepared()
+    {
+        _configuration.PlayerUserIds = [Player.ToString("N")];
+        async Task<System.Text.Json.JsonElement> Config()
+        {
+            using var r = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Web/Config", "User", Player, "d"));
+            return await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        }
+        async Task<string> Csp() { using var r = await _client.GetAsync("/RetroBridge/Play"); return r.Headers.GetValues("Content-Security-Policy").Single(); }
+
+        Assert.False((await Config()).GetProperty("enabled").GetBoolean());
+        Assert.DoesNotContain("wasm-unsafe-eval", await Csp());
+        using (var hidden = await _client.GetAsync("/RetroBridge/Web/emu.js")) Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        using (var denied = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Web/Prepare", "User", Player, "d"))) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        _configuration.BrowserPlay = true;
+        Assert.False((await Config()).GetProperty("enabled").GetBoolean()); // not prepared yet
+        using (var prepared = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Web/Prepare", "Administrator", Player, "d"))) prepared.EnsureSuccessStatusCode();
+        var config = await Config();
+        Assert.True(config.GetProperty("enabled").GetBoolean());
+        Assert.Equal("mgba", config.GetProperty("cores").GetProperty("gbc").GetString());
+        Assert.Contains("wasm-unsafe-eval", await Csp());
+        using (var served = await _client.GetAsync("/RetroBridge/Web/emu.js"))
+        {
+            Assert.Equal("text/javascript", served.Content.Headers.ContentType!.MediaType);
+            Assert.Equal("console.log(1)", await served.Content.ReadAsStringAsync());
+        }
+        using (var wasm = await _client.GetAsync("/RetroBridge/Web/core_libretro.wasm")) Assert.Equal("application/wasm", wasm.Content.Headers.ContentType!.MediaType);
+        foreach (var path in new[] { "/RetroBridge/Web/catalog.json", "/RetroBridge/Web/..%2F..%2Fcatalog.json", "/RetroBridge/Web/notes.txt" })
+            using (var other = await _client.GetAsync(path)) Assert.Equal(HttpStatusCode.NotFound, other.StatusCode);
+        _configuration.BrowserPlay = false;
+        using (var off = await _client.GetAsync("/RetroBridge/Web/emu.js")) Assert.Equal(HttpStatusCode.NotFound, off.StatusCode);
     }
 
     private sealed class TestDevices : IPairedDevices

@@ -80,6 +80,82 @@ def build_rom():
     return header + prg + bytes(8192)
 
 
+# The cartridge header logo every Game Boy program carries (checked by the boot ROM).
+GB_LOGO = bytes.fromhex(
+    'CEED6666CC0D000B03730083000C000D0008111F8889000EDCCC6EE6DDDDD999'
+    'BBBB67636E0EECCCDDDC999FBBB9333E')
+
+
+def build_gb_rom():
+    """Original DMG save-counter program on an MBC1+RAM+BATTERY cartridge, the Game Boy twin of build_rom().
+
+    Cartridge RAM at $A000 holds the signature RB01 and a counter at offset 4, incremented once per boot.
+    The screen is black on odd boots and white on even boots.
+    """
+    code = bytearray()
+    labels, patches = {}, []
+
+    def label(name):
+        labels[name] = 0x150 + len(code)
+
+    def jr(opcode, target):
+        code.extend([opcode, 0])
+        patches.append((len(code) - 1, target))
+
+    label('start')
+    code.extend([0xF3, 0x31, 0xFE, 0xFF])          # DI; LD SP,$FFFE
+    code.extend([0x3E, 0x0A, 0xEA, 0x00, 0x00])    # LD A,$0A; LD ($0000),A: enable cartridge RAM
+    for offset, value in enumerate(b'RB01'):
+        code.extend([0xFA, offset, 0xA0, 0xFE, value])  # LD A,($A000+n); CP n
+        jr(0x20, 'initialize')                           # JR NZ
+    code.extend([0x21, 0x04, 0xA0, 0x34])          # LD HL,$A004; INC (HL): exactly once per boot
+    jr(0x18, 'display')                            # JR
+    label('initialize')
+    for offset, value in enumerate(b'RB01\x01'):
+        code.extend([0x3E, value, 0xEA, offset, 0xA0])  # LD A,n; LD ($A000+n),A
+    label('display')
+    code.extend([0xFA, 0x04, 0xA0, 0xE6, 0x01])    # LD A,($A004); AND 1
+    jr(0x28, 'even')                               # JR Z
+    code.extend([0x3E, 0xFF])                      # LD A,$FF: odd boot, every shade black
+    jr(0x18, 'palette')
+    label('even')
+    code.extend([0x3E, 0x00])                      # LD A,$00: even boot, white
+    label('palette')
+    code.extend([0xE0, 0x47])                      # LDH ($47),A: background palette
+    code.extend([0xAF, 0xEA, 0x00, 0x00])          # XOR A; LD ($0000),A: disable cartridge RAM
+    label('forever')
+    jr(0x18, 'forever')
+    for offset, target in patches:
+        distance = labels[target] - (0x150 + offset + 1)
+        if not -128 <= distance <= 127:
+            raise ValueError('Branch out of range')
+        code[offset] = distance & 0xFF
+
+    rom = bytearray(32768)
+    rom[0x100:0x104] = bytes([0x00, 0xC3, 0x50, 0x01])  # NOP; JP $0150
+    rom[0x104:0x134] = GB_LOGO
+    rom[0x134:0x143] = b'RB SAVE COUNTER'.ljust(15, b'\0')
+    rom[0x143] = 0x00                                   # DMG only
+    rom[0x147], rom[0x148], rom[0x149] = 0x03, 0x00, 0x02  # MBC1+RAM+BATTERY, 32 KiB ROM, 8 KiB RAM
+    rom[0x14A] = 0x01                                   # non-Japanese
+    rom[0x150:0x150 + len(code)] = code
+    checksum = 0
+    for byte in rom[0x134:0x14D]:
+        checksum = (checksum - byte - 1) & 0xFF
+    rom[0x14D] = checksum
+    total = (sum(rom) - rom[0x14E] - rom[0x14F]) & 0xFFFF
+    rom[0x14E:0x150] = struct.pack('>H', total)
+    return bytes(rom)
+
+
+def write_gb_fixture(destination):
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    data = build_gb_rom()
+    destination.write_bytes(data)
+    return hashlib.sha256(data).hexdigest()
+
+
 def write_fixture(destination):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -90,4 +166,5 @@ def write_fixture(destination):
 
 if __name__ == '__main__':
     destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('artifacts/fixtures/save-counter.nes')
-    print(f'{write_fixture(destination)}  {destination}')
+    writer = write_gb_fixture if destination.suffix == '.gb' else write_fixture
+    print(f'{writer(destination)}  {destination}')

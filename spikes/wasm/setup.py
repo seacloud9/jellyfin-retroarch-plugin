@@ -15,7 +15,9 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / 'artifacts/wasm-spike'
 NOSTALGIST = 'https://cdn.jsdelivr.net/npm/nostalgist@0.23.0/dist/nostalgist.umd.js'
 # Nostalgist 0.23.0 expects cores from this tag.
-CORE = 'https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/fceumm_libretro.zip'
+CORES = 'https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/{}_libretro.zip'
+# License-compatible with the GPL-3.0 RetroArch Emscripten build (see docs/backlog.md); Gambatte is excluded.
+CORE_NAMES = ['fceumm', 'mgba']  # SameBoy has no build in this repository
 
 
 def fetch(url):
@@ -26,17 +28,20 @@ def fetch(url):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'nostalgist.umd.js').write_bytes(fetch(NOSTALGIST))
-    with zipfile.ZipFile(io.BytesIO(fetch(CORE))) as core:
-        core.extractall(OUT)
+    for name in CORE_NAMES:
+        with zipfile.ZipFile(io.BytesIO(fetch(CORES.format(name)))) as core:
+            core.extractall(OUT)
     sys.path.insert(0, str(REPO / 'scripts'))
-    from fixture_rom import write_fixture
+    from fixture_rom import write_fixture, write_gb_fixture
     write_fixture(OUT / 'save-counter.nes')
+    write_gb_fixture(OUT / 'save-counter.gb')
     (OUT / 'index.html').write_text((Path(__file__).parent / 'index.html').read_text())
     for name in sorted(p.name for p in OUT.iterdir()):
         print(f'{hashlib.sha256((OUT / name).read_bytes()).hexdigest()[:16]}  {name}')
     print(f'\nServe with: python3 -m http.server 8099 --bind 127.0.0.1 --directory {OUT}')
     print('Open http://127.0.0.1:8099/ (iOS simulator: xcrun simctl openurl booted <url>; Android emulator: adb reverse tcp:8099 tcp:8099).')
     print('Reload to check that the save persists: the boot counter should increase.')
+    print('Game Boy: ?core=mgba&rom=save-counter.gb')
 
 
 if __name__ == '__main__':

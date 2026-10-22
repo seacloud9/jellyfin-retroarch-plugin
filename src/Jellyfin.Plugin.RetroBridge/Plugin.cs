@@ -20,6 +20,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Games limited to specific players. Games without an entry are available to every player.
     public GameAccess[] RestrictedGames { get; set; } = [];
+
+    // Experimental in-browser play (WASM). Off by default; platforms limit which games offer it.
+    public bool BrowserPlay { get; set; }
+    public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc"];
 }
 
 public sealed class GameAccess

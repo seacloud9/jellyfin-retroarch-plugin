@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WASM spike</title>
-<style>body{margin:0;font:16px system-ui;background:#111;color:#eee}canvas{width:100%;aspect-ratio:256/240;display:block;background:#000}#log{padding:12px;white-space:pre-wrap}</style>
+<style>body{margin:0;font:16px system-ui;background:#111;color:#eee}canvas{width:100%;aspect-ratio:10/9;display:block;background:#000}#log{padding:12px;white-space:pre-wrap}</style>
 </head><body>
 <canvas id="screen"></canvas>
 <div id="log">Starting…</div>
@@ -8,15 +8,19 @@
 <script>
 (async function () {
   var log = function (t) { document.getElementById('log').textContent += '\n' + t; };
-  var stored = localStorage.getItem('spike-sram');
+  var params = new URLSearchParams(location.search);
+  var coreName = params.get('core') || 'fceumm', romName = params.get('rom') || 'save-counter.nes';
+  var key = 'spike-sram-' + coreName + '-' + romName;
+  log('Core ' + coreName + ', game ' + romName);
+  var stored = localStorage.getItem(key);
   var sram = stored ? new Blob([Uint8Array.from(atob(stored), function (c) { return c.charCodeAt(0); })]) : undefined;
   log('Stored SRAM: ' + (stored ? 'yes (counter ' + atob(stored).charCodeAt(4) + ')' : 'none'));
   try {
     var t0 = performance.now();
     var nostalgist = await Nostalgist.launch({
       element: document.getElementById('screen'),
-      core: { name: 'fceumm', js: new URL('fceumm_libretro.js', location.href).href, wasm: new URL('fceumm_libretro.wasm', location.href).href },
-      rom: { fileName: 'save-counter.nes', fileContent: await (await fetch('save-counter.nes')).blob() },
+      core: { name: coreName, js: new URL(coreName + '_libretro.js', location.href).href, wasm: new URL(coreName + '_libretro.wasm', location.href).href },
+      rom: { fileName: romName, fileContent: await (await fetch(romName)).blob() },
       sram: sram,
       respondToGlobalEvents: false,
     });
@@ -25,7 +29,7 @@
     var blob = await nostalgist.saveSRAM();
     var bytes = new Uint8Array(await blob.arrayBuffer());
     log('SRAM after boot: ' + bytes.length + ' bytes, signature ' + String.fromCharCode.apply(null, bytes.slice(0, 4)) + ', counter ' + bytes[4]);
-    localStorage.setItem('spike-sram', btoa(String.fromCharCode.apply(null, bytes)));
+    localStorage.setItem(key, btoa(String.fromCharCode.apply(null, bytes)));
     var module = nostalgist.getEmscriptenModule();
     log('WASM memory: ' + Math.round((module.HEAP8 ? module.HEAP8.length : 0) / 1048576) + ' MiB');
     window.spikeResult = { counter: bytes[4], signature: String.fromCharCode.apply(null, bytes.slice(0, 4)) };

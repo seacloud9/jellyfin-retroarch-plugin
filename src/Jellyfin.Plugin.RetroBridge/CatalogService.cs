@@ -21,6 +21,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
             };
         });
         services.AddSingleton<LaunchTickets>();
+        services.AddSingleton(provider => new BrowserPlayService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "web")));
         services.AddSingleton(provider => new SaveStore(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "saves")));
         services.AddSingleton<IPairedDevices, JellyfinPairedDevices>();
         services.AddSingleton<Func<PluginConfiguration>>(() => Plugin.Instance!.Configuration);

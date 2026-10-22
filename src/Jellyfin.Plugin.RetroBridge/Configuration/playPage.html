@@ -27,6 +27,19 @@
   #status { min-height: 1.5em; }
   .notice { margin-bottom: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
   code { overflow-wrap: anywhere; }
+  button.browser { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; cursor: pointer; }
+  #player { position: fixed; inset: 0; background: #000; color: #eee; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 16px; z-index: 10; touch-action: none; }
+  #player canvas { width: 100%; max-width: 720px; max-height: 58vh; object-fit: contain; image-rendering: pixelated; background: #000; outline: none; border: 0; }
+  #player-status { min-height: 1.4em; margin: 0; font-size: .9rem; color: #aaa; text-align: center; }
+  .pad { width: 100%; max-width: 520px; display: flex; justify-content: space-between; align-items: center; user-select: none; -webkit-user-select: none; }
+  .dpad { display: grid; grid-template: repeat(3, 52px) / repeat(3, 52px); }
+  .pad button, .system button { background: #2a2a31; color: #eee; border: 0; border-radius: 10px; font-weight: 700; touch-action: none; }
+  .pad button:active, .pad button.down, .system button.down { background: #45454f; }
+  .actions { display: grid; grid-template-columns: repeat(2, 64px); gap: 12px; }
+  .actions .round { width: 64px; height: 64px; border-radius: 50%; }
+  .system { display: flex; gap: 12px; }
+  .system button { padding: 8px 14px; font-size: .8rem; }
+  #exit { background: transparent; border: 1px solid #555; color: #eee; padding: 8px 18px; border-radius: 6px; }
 </style>
 </head><body><main>
   <h1>RetroBridge</h1>
@@ -41,9 +54,23 @@
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="games"></ul>
   </div>
+<div id="player" hidden>
+  <canvas id="screen"></canvas>
+  <p id="player-status" role="status" aria-live="polite"></p>
+  <div class="pad">
+    <div class="dpad">
+      <span></span><button data-button="up" aria-label="Up">▲</button><span></span>
+      <button data-button="left" aria-label="Left">◀</button><span></span><button data-button="right" aria-label="Right">▶</button>
+      <span></span><button data-button="down" aria-label="Down">▼</button><span></span>
+    </div>
+    <div class="actions"><button class="round" data-button="b">B</button><button class="round" data-button="a">A</button></div>
+  </div>
+  <div class="system"><button data-button="select">SELECT</button><button data-button="start">START</button></div>
+  <button id="exit" type="button">Save and exit</button>
+</div>
 <script>
 (function () {
-  var auth = null, games = [], devices = [], saved = {};
+  var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {} };
   // iOS cannot run a companion, so it can only send launches to a listening device. Android has its own companion app.
   var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var android = /Android/.test(navigator.userAgent);
@@ -99,7 +126,16 @@
       play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title);
       play.disabled = !devices.length; if (!devices.length) play.title = 'Pair a device to play';
       play.addEventListener('click', function () { launch(g, play); });
-      li.append(cover, name, play); list.append(li);
+      li.append(cover, name, play);
+      if (web.Enabled && web.Platforms.includes(g.Platform)) {
+        var inBrowser = document.createElement('button');
+        inBrowser.className = 'browser'; inBrowser.textContent = 'Play in browser'; inBrowser.setAttribute('aria-label', 'Play ' + g.Title + ' in this browser');
+        inBrowser.addEventListener('click', function () { playInBrowser(g); });
+        // iOS cannot run a companion, so in-browser play is the main action there (and without a paired device).
+        if (ios || !devices.length) { inBrowser.className = 'play'; play.className = 'browser'; li.insertBefore(inBrowser, play); }
+        else li.append(inBrowser);
+      }
+      list.append(li);
     });
     if (!list.children.length) { var empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
   }
@@ -121,6 +157,89 @@
       $('status').textContent = error.status === 403 ? 'Your access to RetroBridge was removed.' : 'Could not start the game. Try again.';
     } finally { setTimeout(function () { button.disabled = false; }, 3000); }
   }
+  // ---- In-browser play (experimental): emulator files come from this server; saves use the save sync API. ----
+  // Named 'playing' so it does not shadow session(), which reads the Jellyfin login.
+  var emulator = null, playing = null;
+  function raw(method, path, body, keepalive) {
+    return fetch(path, { method: method, headers: { Authorization: header() }, body: body, keepalive: !!keepalive });
+  }
+  function loadNostalgist() {
+    if (window.Nostalgist) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'Web/nostalgist.umd.js'; script.onload = resolve; script.onerror = function () { reject(new Error('emulator unavailable')); };
+      document.head.append(script);
+    });
+  }
+  function same(a, b) { if (!a || !b || a.length !== b.length) return false; for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
+  function playerStatus(text) { $('player-status').textContent = text; }
+  async function flush(keepalive) {
+    if (!emulator || !playing || playing.flushing) return;
+    playing.flushing = true;
+    try {
+      var bytes = new Uint8Array(await (await emulator.saveSRAM()).arrayBuffer());
+      if (!bytes.length || same(bytes, playing.last)) return;
+      var route = 'Games/' + encodeURIComponent(playing.game.Id) + '/Saves/' + encodeURIComponent(playing.name);
+      var response = await raw('PUT', route + '?baseRevision=' + playing.revision, bytes, keepalive);
+      if (response.status === 409) {
+        // Another device saved meanwhile: the copy just played wins; the server keeps the previous versions.
+        var current = await response.json();
+        response = await raw('PUT', route + '?baseRevision=' + current.Revision, bytes, keepalive);
+      }
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      playing.revision = (await response.json()).Revision; playing.last = bytes;
+      window.__browserPlay = { booted: true, revision: playing.revision };
+      playerStatus('Saved to your server.');
+    } catch (_) { playerStatus('Could not save to the server; will retry.'); }
+    finally { playing.flushing = false; }
+  }
+  async function playInBrowser(game) {
+    $('player').hidden = false; playerStatus('Loading ' + game.Title + '…');
+    try {
+      await loadNostalgist();
+      var name = game.Id + '.srm', sram, revision = 0;
+      var content = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Content');
+      if (!content.ok) throw new Error('game unavailable');
+      var list = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Saves');
+      var server = list.ok ? (await list.json()).filter(function (s) { return s.Name === name; })[0] : null;
+      if (server) {
+        var download = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Saves/' + encodeURIComponent(name));
+        if (download.ok) { sram = await download.blob(); revision = server.Revision; }
+      }
+      var core = web.Cores[game.Platform];
+      emulator = await Nostalgist.launch({
+        element: $('screen'),
+        core: { name: core, js: new URL('Web/' + core + '_libretro.js', location.href).href, wasm: new URL('Web/' + core + '_libretro.wasm', location.href).href },
+        rom: { fileName: game.Id + game.Extension, fileContent: await content.blob() },
+        sram: sram,
+      });
+      playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
+      window.__browserPlay = { booted: true, revision: revision };
+      playerStatus(server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.');
+    } catch (error) {
+      window.__browserPlay = { error: error.message };
+      playerStatus('Could not start in the browser: ' + error.message + '.');
+    }
+  }
+  async function exitPlayer() {
+    if (playing) { clearInterval(playing.timer); await flush(false); }
+    if (emulator) { try { emulator.exit({ removeCanvas: false }); } catch (_) {} }
+    emulator = null; playing = null; $('player').hidden = true;
+    try { saved = await api('GET', 'Saves'); } catch (_) {}
+    render();
+  }
+  $('exit').addEventListener('click', exitPlayer);
+  // iOS suspends hidden tabs: save whenever the page is hidden.
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(true); });
+  window.addEventListener('pagehide', function () { flush(true); });
+  document.querySelectorAll('#player [data-button]').forEach(function (button) {
+    var name = button.getAttribute('data-button');
+    function down(event) { event.preventDefault(); button.classList.add('down'); if (emulator) emulator.pressDown(name); }
+    function up(event) { event.preventDefault(); button.classList.remove('down'); if (emulator) emulator.pressUp(name); }
+    button.addEventListener('pointerdown', down);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (type) { button.addEventListener(type, up); });
+  });
+
   async function start() {
     auth = session();
     if (!auth) { setup(['Sign in to Jellyfin in this browser first, then reload this page.']); return; }
@@ -137,9 +256,14 @@
         var o = document.createElement('option'); o.value = d.Id; o.textContent = d.Name + (d.Listening ? ' (ready)' : ''); $('device').append(o);
       });
       games = await api('GET', 'Games');
-      // Save status is optional; older servers or errors just hide it.
+      // Save status and browser play are optional; older servers or errors just hide them.
       try { saved = await api('GET', 'Saves'); } catch (_) { saved = {}; }
+      try { web = await api('GET', 'Web/Config'); } catch (_) {}
       $('library').hidden = false; render();
+      // #play=<game id> opens a game directly in the browser (shareable link).
+      var direct = /^#play=([a-z]+-[0-9a-f]{64})$/.exec(location.hash);
+      var target = direct && games.filter(function (g) { return g.Id === direct[1]; })[0];
+      if (target && web.Enabled && web.Platforms.includes(target.Platform)) playInBrowser(target);
     } catch (error) {
       setup([error.status === 403 ? 'Your account does not have access to RetroBridge. Ask an administrator.' : error.status === 401 ? 'Your Jellyfin session expired. Sign in again, then reload.' : 'RetroBridge is unavailable right now.']);
     }
