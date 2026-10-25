@@ -36,6 +36,8 @@ def main():
     write_fixture(OUT / 'save-counter.nes')
     write_gb_fixture(OUT / 'save-counter.gb')
     (OUT / 'index.html').write_text((Path(__file__).parent / 'index.html').read_text())
+    # Minimal WebGL check: tells a device/emulator display problem apart from an emulator-core problem.
+    (OUT / 'webgl-test.html').write_text((Path(__file__).parent / 'webgl-test.html').read_text())
     for name in sorted(p.name for p in OUT.iterdir()):
         print(f'{hashlib.sha256((OUT / name).read_bytes()).hexdigest()[:16]}  {name}')
     print(f'\nServe with: python3 -m http.server 8099 --bind 127.0.0.1 --directory {OUT}')

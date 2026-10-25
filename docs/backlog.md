@@ -50,7 +50,7 @@
 - Verified in iOS 26.5 Safari (simulator) for NES and Game Boy, with saves reaching the server across two sessions each.
 
 **Still open**
-1. A real Android phone: emulator Chrome could not render (see the spike results).
+1. A real Android phone, to confirm display. Findings on the Android 17 emulator (Oct 24): with the host GPU (`-gpu host`), Chrome ran the FCEUmm core and the save round trip worked (counter 3 → 4 → 5 → 6 → 7 across launches), but the canvas stayed black, including with `video_shader_enable=false`, the font overlay off, and the menu off. A minimal page (`spikes/wasm/webgl-test.html`) that only clears WebGL1/WebGL2 canvases also shows nothing while both contexts report "ok". The emulator does not composite **any** WebGL output, so this is an emulator display limitation, not a RetroArch or RetroBridge problem. Spike option: `?cfg=<json>` overrides RetroArch settings.
 2. Real-device feel: audio, latency, gamepads, rotation, background behavior (see manual-smoke.md).
 3. ~~Source availability~~ done: [third-party.md](third-party.md) lists exact sources; the play page links it while in-browser play is on.
 4. Save states in the browser are not synced (battery saves only, as with the companions).

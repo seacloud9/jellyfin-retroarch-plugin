@@ -18,7 +18,7 @@ Use v0.2.0 or later. Have the plugin page open on a computer. If anything fails,
 7. Repeat steps 3–6 quickly with a Game Boy game.
 
 **Android phone (5 min)**
-8. Chrome: open the play page and press **Play in browser**. This is the step the emulator could not render; note whether the game appears and runs smoothly.
+8. Chrome: open the play page and press **Play in browser**. The emulator showed a black screen (it cannot display any WebGL), but the game ran and saved there. Note whether the game appears and runs smoothly. If it's black, also open `/web/…`-hosted `spikes/wasm/webgl-test.html` (or any WebGL demo) to tell a phone display problem from a RetroBridge one.
 9. If you sideload the APK: install RetroArch and its Nestopia/Gambatte cores, open RetroArch once, install RetroBridge, allow **All files access**, pair, then press **Play** with the phone selected. Note any **Last problem**.
 
 **Cross-device (2 min)**

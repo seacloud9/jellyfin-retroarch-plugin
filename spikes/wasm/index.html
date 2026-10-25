@@ -11,7 +11,7 @@
   var params = new URLSearchParams(location.search);
   var coreName = params.get('core') || 'fceumm', romName = params.get('rom') || 'save-counter.nes';
   var key = 'spike-sram-' + coreName + '-' + romName;
-  log('Core ' + coreName + ', game ' + romName);
+  log('Core ' + coreName + ', game ' + romName + (params.get('cfg') ? ', config ' + params.get('cfg') : ''));
   var stored = localStorage.getItem(key);
   var sram = stored ? new Blob([Uint8Array.from(atob(stored), function (c) { return c.charCodeAt(0); })]) : undefined;
   log('Stored SRAM: ' + (stored ? 'yes (counter ' + atob(stored).charCodeAt(4) + ')' : 'none'));
@@ -23,6 +23,8 @@
       rom: { fileName: romName, fileContent: await (await fetch(romName)).blob() },
       sram: sram,
       respondToGlobalEvents: false,
+      // ?cfg=<json> overrides RetroArch settings (rendering experiments).
+      retroarchConfig: params.get('cfg') ? JSON.parse(params.get('cfg')) : undefined,
     });
     log('Booted in ' + Math.round(performance.now() - t0) + ' ms');
     await new Promise(function (r) { setTimeout(r, 3000); });
