@@ -167,7 +167,7 @@ def write_fixture(destination):
 def build_gba_rom():
     """Game Boy Advance save-counter: battery SRAM at 0x0E000000 holds RB01 and a counter at offset 4.
 
-    ARM instructions are encoded directly. The "SRAM_V" marker tells emulators which save type the cartridge has.
+    It then shows moving stripes whose red tint follows the counter. ARM instructions are encoded directly. The "SRAM_V" marker tells emulators which save type the cartridge has.
     """
     words = []
 
@@ -207,7 +207,36 @@ def build_gba_rom():
     ldrb(1, 0, 4)
     add(1, 1, 1)
     strb(1, 0, 4)
-    branch(0xE, at())                            # loop forever
+    # Display: mode 3 bitmap of moving diagonal stripes, tinted red by the boot counter.
+    words.append(0xE1A0B181)                     # mov r11, r1, lsl #3
+    words.append(0xE20BB01F)                     # and r11, r11, #31
+    words.append(0xE3A02404)                     # mov r2, #0x04000000 (DISPCNT)
+    words.append(0xE3A03B01)                     # mov r3, #0x400 (background 2 on)
+    add(3, 3, 3)                                 # mode 3
+    words.append(0xE1C230B0)                     # strh r3, [r2]
+    mov(4, 0)                                    # t = 0
+    frame = at()
+    words.append(0xE3A05406)                     # mov r5, #0x06000000 (VRAM)
+    mov(6, 0)                                    # y = 0
+    row = at()
+    mov(7, 0)                                    # x = 0
+    pixel = at()
+    words.append(0xE0878006)                     # add r8, r7, r6
+    words.append(0xE0888004)                     # add r8, r8, r4
+    words.append(0xE1A091A8)                     # mov r9, r8, lsr #3
+    words.append(0xE209901F)                     # and r9, r9, #31
+    words.append(0xE1A0A509)                     # mov r10, r9, lsl #10 (blue)
+    words.append(0xE18AA289)                     # orr r10, r10, r9, lsl #5 (green)
+    words.append(0xE18AA00B)                     # orr r10, r10, r11 (red)
+    words.append(0xE0C5A0B2)                     # strh r10, [r5], #2
+    add(7, 7, 1)
+    cmp(7, 240)
+    branch(0x1, pixel)
+    add(6, 6, 1)
+    cmp(6, 160)
+    branch(0x1, row)
+    add(4, 4, 3)
+    branch(0xE, frame)
     for index in pending:
         fix(index, 0x1, init)
     fix(pending_increment, 0xE, increment)
@@ -224,7 +253,7 @@ def build_gba_rom():
 def build_genesis_rom():
     """Genesis / Mega Drive save-counter: battery SRAM on odd bytes from 0x200001 holds R, B, 0, 1 and a counter.
 
-    68000 instructions are encoded directly; the header declares the SRAM so emulators map it.
+    It then cycles the background color, tinted red by the counter. 68000 instructions are encoded directly; the header declares the SRAM so emulators map it.
     """
     code = bytearray()
 
@@ -248,7 +277,27 @@ def build_genesis_rom():
     emit(0x4228, 8)                              # clr.b 8(a0)
     increment = len(code)
     emit(0x5228, 8)                              # addq.b #1, 8(a0)
-    emit(0x60FE)                                 # bra.s * (loop forever)
+    # Display: cycle the background color; its red part follows the boot counter.
+    emit(0x43F9, 0x00C0, 0x0004)                 # lea $C00004, a1 (VDP control)
+    emit(0x45F9, 0x00C0, 0x0000)                 # lea $C00000, a2 (VDP data)
+    for register in (0x8004, 0x8144, 0x8700, 0x8F02):
+        emit(0x32BC, register)                   # move.w #register, (a1)
+    emit(0x7000)                                 # moveq #0, d0
+    emit(0x1228, 8)                              # move.b 8(a0), d1
+    emit(0xD201, 0xD201)                         # add.b d1, d1 (twice: counter * 4)
+    emit(0x0241, 0x000E)                         # andi.w #$000E, d1
+    loop = len(code)
+    emit(0x22BC, 0xC000, 0x0000)                 # move.l #$C0000000, (a1) (write CRAM 0)
+    emit(0x3400)                                 # move.w d0, d2
+    emit(0x0242, 0x0EE0)                         # andi.w #$0EE0, d2
+    emit(0x8441)                                 # or.w d1, d2
+    emit(0x3482)                                 # move.w d2, (a2)
+    emit(0x0640, 0x0020)                         # addi.w #$0020, d0
+    emit(0x263C, 0x0000, 0x4000)                 # move.l #$4000, d3
+    emit(0x5383, 0x66FC)                         # subq.l #1, d3; bne.s (delay)
+    emit(0x6000 | (loop - (len(code) + 2)) & 0xFF) # bra.s loop
+    idle = len(code)
+    emit(0x60FE)                                 # bra.s * (exceptions land here)
     for at in branches:
         code[at + 1] = (init - (at + 2)) & 0xFF
     code[skip + 1] = (increment - (skip + 2)) & 0xFF
@@ -256,7 +305,7 @@ def build_genesis_rom():
     rom[0:4] = (0x00FFFE00).to_bytes(4, 'big')   # initial stack pointer
     rom[4:8] = (0x00000200).to_bytes(4, 'big')   # entry point
     for vector in range(2, 64):                  # every exception lands in the idle loop
-        rom[vector * 4:vector * 4 + 4] = (0x200 + increment + 4).to_bytes(4, 'big')
+        rom[vector * 4:vector * 4 + 4] = (0x200 + idle).to_bytes(4, 'big')
     header = {0x100: b'SEGA MEGA DRIVE ', 0x110: b'(C)RBSV 2026.NOV', 0x120: b'RB SAVE TEST'.ljust(48),
               0x150: b'RB SAVE TEST'.ljust(48), 0x180: b'GM RB000001-00', 0x190: b'J'.ljust(16), 0x1F0: b'JUE'.ljust(16)}
     for offset, value in header.items():
