@@ -7,7 +7,7 @@ Automated real-server tests now cover most integration checks (see the [verifica
 Use v0.2.0 or later. Have the plugin page open on a computer. If anything fails, open the play page's **Diagnostics → Copy report** (phone browser), run `RetroBridge.Launcher doctor` (computer), or read **Last problem** in the Android app, and keep the text.
 
 **Setup (computer, 3 min)**
-1. Plugin page: tick your player account, turn on **In-browser play**, tick NES/GB/GBC, **Download emulator files**, **Save settings**. Copy the play page link.
+1. Plugin page: tick your player account, turn on **In-browser play**, tick the systems to try (NES, GB, GBC, GBA, Genesis; PlayStation if you have a CHD under 512 MiB), **Download emulator files**, **Save settings**. Copy the play page link.
 2. Put a legal game for each platform you have (homebrew is fine) in a game folder and **Scan**. Note whether box art appears.
 
 **iPhone or iPad, Safari (5 min)**
@@ -54,6 +54,10 @@ Checks (record phone model, Android version, RetroArch version and source, and c
 - [ ] Save sync between phone and desktop: play on the desktop, launch on the phone (it should continue), reopen the RetroBridge app, play on the desktop again. Also check that the background job uploads without opening the app (within about 15 minutes, on Wi-Fi and battery).
 
 ## Pending: other manual checks
+
+- [ ] New systems natively (desktop and Android): one real SNES, N64, GBA, Genesis, and PlayStation (CHD) game each boots, saves in-game, and the save continues on another device. Only the GBA and Genesis fixtures have automated save checks.
+- [ ] PlayStation in the browser with a real CHD disc (only a boot test with a tiny program was automated): load time, memory on an iPhone, memory-card save round trip.
+- [ ] Touch layouts for SNES (Y X B A, L R), Genesis (A B C), and PlayStation (□ △ ✕ ○, L R) map to the right in-game buttons.
 
 - [ ] Windows: native RetroArch save/restart with the packaged `win-x64` companion (CI covers build, tests, and registration only).
 - [ ] Download a companion package on a clean machine (no .NET, no developer tools) and follow `QUICKSTART.txt` end to end. Note Gatekeeper/SmartScreen prompts.

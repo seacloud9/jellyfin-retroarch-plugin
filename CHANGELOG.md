@@ -3,6 +3,9 @@
 Each release's section becomes "What's new" in its GitHub release notes and the changelog in Jellyfin's plugin catalog. `scripts/build-release.py` requires a section for the version being released.
 
 ## [Unreleased]
+- **New systems:** SNES, Nintendo 64, Game Boy Advance, Genesis / Mega Drive, and PlayStation (CHD or PBP discs up to 2 GiB) in the catalog, the desktop companion, and the Android app. The Android app picks the best installed core for each system.
+- **In-browser play** adds Game Boy Advance (mGBA), Genesis / Mega Drive (ClownMDEmu), and PlayStation (PCSX ReARMed, off by default, discs up to 512 MiB), with touch buttons that match each system. SNES and Nintendo 64 stay native only: no browser core for them has a license that allows serving it. Administrators press **Download emulator files** again to add the new cores; systems already downloaded keep working meanwhile.
+- `RetroBridge.Launcher doctor` checks only the systems you configured and lists the others.
 
 ## [0.2.1] - 2026-10-22
 - `RetroBridge.Launcher doctor` checks pairing, the server and plugin, RetroArch, cores, the link handler, autostart, and the listener, with a fix for each problem.
