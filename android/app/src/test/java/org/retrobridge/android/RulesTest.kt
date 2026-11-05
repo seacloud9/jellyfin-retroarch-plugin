@@ -41,7 +41,21 @@ class RulesTest {
         assert(Rules.validGame(game))
         assert(!Rules.validGame(game.copy(platform = "gb")))
         assert(!Rules.validGame(game.copy(id = "nes-../../x")))
-        assert(!Rules.validGame(game.copy(size = Rules.MAX_CONTENT + 1)))
+        assert(!Rules.validGame(game.copy(size = Rules.CARTRIDGE + 1)))
+        // Discs may be larger than cartridges.
+        val disc = Game("psx-$sha", "Disc", "psx", ".chd", Rules.CARTRIDGE * 8, sha)
+        assert(Rules.validGame(disc))
+        assert(!Rules.validGame(disc.copy(size = Rules.DISC + 1)))
+        assert(!Rules.validGame(disc.copy(extension = ".cue")))
+    }
+
+    @Test fun platformTableMatchesTheServer() {
+        assertEquals(listOf("nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "psx"), Rules.systems.map { it.id })
+        assertEquals("snes", Rules.platforms[".smc"])
+        assertEquals("genesis", Rules.platforms[".gen"])
+        assertNull(Rules.platforms[".bin"])
+        // Every preferred core has a save folder, so a first download lands where RetroArch looks for it.
+        Rules.systems.flatMap { it.cores }.forEach { assert(SaveSync.coreFolders.containsKey(it)) { it } }
     }
 
     @Test fun choosesTheBestInstalledCore() {
@@ -51,6 +65,9 @@ class RulesTest {
         assertEquals("nestopia_libretro_android.so", Rules.chooseCore("nes", installed + "nestopia_libretro_android.so"))
         assertNull(Rules.chooseCore("gb", listOf("fceumm_libretro_android.so")))
         assertNull(Rules.chooseCore("snes", installed))
+        assertEquals("mgba_libretro_android.so", Rules.chooseCore("gba", installed))
+        assertEquals("mupen64plus_next_gles3_libretro_android.so", Rules.chooseCore("n64", listOf("parallel_n64_libretro_android.so", "mupen64plus_next_gles3_libretro_android.so")))
+        assertEquals("pcsx_rearmed_libretro_android.so", Rules.chooseCore("psx", listOf("mednafen_psx_libretro_android.so", "pcsx_rearmed_libretro_android.so")))
         assertNull(Rules.chooseCore("nes", listOf("nestopia_libretro_android.so.partial")))
     }
 

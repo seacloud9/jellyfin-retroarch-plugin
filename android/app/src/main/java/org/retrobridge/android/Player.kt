@@ -107,6 +107,7 @@ class Player(private val context: Context) {
         const val QUERY_INSTALLED_CORES = "com.retroarch.QUERY_INSTALLED_CORES"
         const val INSTALLED_CORES_RESULT = "com.retroarch.INSTALLED_CORES_RESULT"
         val RETROARCH_PACKAGES = listOf("com.retroarch", "com.retroarch.aarch64", "com.retroarch.ra32")
-        val CORES = mapOf("nes" to "nestopia_libretro_android.so", "gb" to "gambatte_libretro_android.so", "gbc" to "gambatte_libretro_android.so")
+        // Used only when RetroArch cannot report its cores: assume the first preferred core.
+        val CORES = Rules.preferredCores.mapValues { it.value.first() + "_libretro_android.so" }
     }
 }

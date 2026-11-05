@@ -10,7 +10,7 @@ import java.io.File
 class Syncer(context: Context, private val api: Api) {
     private val state = context.getSharedPreferences("retrobridge-sync", Context.MODE_PRIVATE)
     private val saves = File(Environment.getExternalStorageDirectory(), "RetroArch/saves")
-    private val savePattern = Regex("((?:nes|gb|gbc)-[0-9a-f]{64})\\.(srm|sav|rtc)")
+    private val savePattern = Regex("((?:${Rules.systems.joinToString("|") { it.id }})-[0-9a-f]{64})\\.(srm|sav|rtc)")
 
     // Before a launch: also places a first download in the core's save folder.
     fun syncGame(gameId: String, coreFile: String?, log: (String) -> Unit = {}) {

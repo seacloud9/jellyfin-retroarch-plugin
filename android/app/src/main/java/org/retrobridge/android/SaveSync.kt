@@ -14,6 +14,11 @@ object SaveSync {
     val coreFolders = mapOf(
         "nestopia" to "Nestopia", "mesen" to "Mesen", "fceumm" to "FCEUmm", "quicknes" to "QuickNES",
         "gambatte" to "Gambatte", "sameboy" to "SameBoy", "gearboy" to "Gearboy", "mgba" to "mGBA",
+        "snes9x" to "Snes9x", "bsnes" to "bsnes", "snes9x2010" to "Snes9x 2010",
+        "mupen64plus_next_gles3" to "Mupen64Plus-Next", "mupen64plus_next" to "Mupen64Plus-Next", "parallel_n64" to "ParaLLEl N64",
+        "vba_next" to "VBA Next", "vbam" to "VBA-M", "gpsp" to "gpSP",
+        "genesis_plus_gx" to "Genesis Plus GX", "picodrive" to "PicoDrive", "clownmdemu" to "ClownMDEmu",
+        "pcsx_rearmed" to "PCSX-ReARMed", "swanstation" to "SwanStation", "mednafen_psx_hw" to "Beetle PSX HW", "mednafen_psx" to "Beetle PSX",
     )
 
     fun isSyncedName(gameId: String, name: String) = name.length <= 200 && extensions.any { name == gameId + it }

@@ -8,8 +8,23 @@ import java.security.MessageDigest
 // Same rules as the desktop companion (RetroBridge.Domain.LaunchLink and the launcher's server checks).
 object Rules {
     const val SCHEME = "retrobridge"
-    val platforms = mapOf(".nes" to "nes", ".gb" to "gb", ".gbc" to "gbc")
-    const val MAX_CONTENT = 64L * 1024 * 1024
+    const val CARTRIDGE = 64L * 1024 * 1024
+    const val DISC = 2L * 1024 * 1024 * 1024
+
+    // Same table as RetroBridge.Domain.Platforms. Cores are RetroArch's Android core names, best first.
+    val systems = listOf(
+        GameSystem("nes", listOf(".nes"), CARTRIDGE, listOf("nestopia", "mesen", "fceumm", "quicknes")),
+        GameSystem("snes", listOf(".sfc", ".smc"), CARTRIDGE, listOf("snes9x", "bsnes", "snes9x2010")),
+        GameSystem("n64", listOf(".z64", ".n64", ".v64"), CARTRIDGE, listOf("mupen64plus_next_gles3", "mupen64plus_next", "parallel_n64")),
+        GameSystem("gb", listOf(".gb"), CARTRIDGE, listOf("gambatte", "sameboy", "gearboy", "mgba")),
+        GameSystem("gbc", listOf(".gbc"), CARTRIDGE, listOf("gambatte", "sameboy", "gearboy", "mgba")),
+        GameSystem("gba", listOf(".gba"), CARTRIDGE, listOf("mgba", "vba_next", "vbam", "gpsp")),
+        GameSystem("genesis", listOf(".md", ".gen", ".smd"), CARTRIDGE, listOf("genesis_plus_gx", "picodrive", "clownmdemu")),
+        // PCSX ReARMed runs without a BIOS file; the others need one in RetroArch's system folder.
+        GameSystem("psx", listOf(".chd", ".pbp"), DISC, listOf("pcsx_rearmed", "swanstation", "mednafen_psx_hw", "mednafen_psx")),
+    )
+    private val byId = systems.associateBy { it.id }
+    val platforms = systems.flatMap { s -> s.extensions.map { it to s.id } }.toMap()
 
     // retrobridge://launch?ticket=<base64url>. Anything else, including extra parameters, is rejected.
     fun parseTicket(link: String): String? {
@@ -33,15 +48,10 @@ object Rules {
         return uri.toString()
     }
 
-    fun validGame(game: Game) = platforms[game.extension] == game.platform && game.size in 0..MAX_CONTENT &&
+    fun validGame(game: Game) = platforms[game.extension] == game.platform && game.size in 0..(byId[game.platform]?.maxContent ?: -1) &&
         game.sha256.length == 64 && game.sha256.all { it in '0'..'9' || it in 'a'..'f' } && game.id == "${game.platform}-${game.sha256}"
 
-    // Preferred cores per platform, best first. Names match RetroArch's Android core files.
-    val preferredCores = mapOf(
-        "nes" to listOf("nestopia", "mesen", "fceumm", "quicknes"),
-        "gb" to listOf("gambatte", "sameboy", "gearboy", "mgba"),
-        "gbc" to listOf("gambatte", "sameboy", "gearboy", "mgba"),
-    )
+    val preferredCores = systems.associate { it.id to it.cores }
 
     // Picks an installed core for a platform from RetroArch's reported core files (names or paths).
     fun chooseCore(platform: String, installed: List<String>): String? {
@@ -62,5 +72,7 @@ object Rules {
 
     fun verified(file: File, game: Game) = file.isFile && file.length() == game.size && file.inputStream().use(::sha256) == game.sha256
 }
+
+data class GameSystem(val id: String, val extensions: List<String>, val maxContent: Long, val cores: List<String>)
 
 data class Game(val id: String, val title: String, val platform: String, val extension: String, val size: Long, val sha256: String)
