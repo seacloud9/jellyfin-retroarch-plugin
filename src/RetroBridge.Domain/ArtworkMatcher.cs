@@ -6,12 +6,7 @@ namespace RetroBridge.Domain;
 // Matches games to libretro-thumbnails names ("Super Mario Bros. (World)") from the server's directory index.
 public static partial class ArtworkMatcher
 {
-    public static readonly IReadOnlyDictionary<string, string> Systems = new Dictionary<string, string>
-    {
-        ["nes"] = "Nintendo - Nintendo Entertainment System",
-        ["gb"] = "Nintendo - Game Boy",
-        ["gbc"] = "Nintendo - Game Boy Color",
-    };
+    public static readonly IReadOnlyDictionary<string, string> Systems = Platforms.All.ToDictionary(x => x.Id, x => x.ArtworkSystem);
 
     private static readonly string[] PreferredRegions = ["USA", "World", "Europe", "Japan"];
 

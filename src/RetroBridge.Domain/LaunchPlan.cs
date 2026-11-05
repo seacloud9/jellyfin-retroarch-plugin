@@ -9,7 +9,7 @@ public static class LaunchPlan
     public static string SaveDirectory(string dataDirectory, string server, Guid user, Game game)
     {
         var serverId = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(server)));
-        if (game.Platform is not ("nes" or "gb" or "gbc"))
+        if (Platforms.Get(game.Platform) is null)
             throw new ArgumentException("Unsupported platform.");
         if (string.IsNullOrEmpty(game.Sha256) || game.Sha256.Length != 64 || !game.Sha256.All(char.IsAsciiHexDigit))
             throw new ArgumentException("Invalid content checksum.");

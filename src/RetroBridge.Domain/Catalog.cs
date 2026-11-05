@@ -8,15 +8,37 @@ public sealed record IndexedGame(Game Game, string Root, string RelativePath, lo
 public sealed record ScanIssue(string Path, string Message);
 public sealed record ScanResult(IReadOnlyList<IndexedGame> Games, IReadOnlyList<ScanIssue> Issues, int Hashed = 0, int Reused = 0);
 
+public sealed record PlatformInfo(string Id, string Name, string[] Extensions, long MaxContentBytes, string ArtworkSystem);
+
+// Every supported system. The companion, Android app, play page, and dashboard follow this list.
 public static class Platforms
 {
-    public static string? FromExtension(string extension) => extension.ToLowerInvariant() switch
+    public const long Cartridge = 64L * 1024 * 1024;
+    public const long Disc = 2L * 1024 * 1024 * 1024;
+
+    // Single-file formats only: a game is one file. Genesis ".bin" is left out because PlayStation uses it too,
+    // and PlayStation .cue/.bin sets are several files, so discs must be CHD or PBP.
+    public static readonly IReadOnlyList<PlatformInfo> All =
+    [
+        new("nes", "NES", [".nes"], Cartridge, "Nintendo - Nintendo Entertainment System"),
+        new("snes", "SNES", [".sfc", ".smc"], Cartridge, "Nintendo - Super Nintendo Entertainment System"),
+        new("n64", "Nintendo 64", [".z64", ".n64", ".v64"], Cartridge, "Nintendo - Nintendo 64"),
+        new("gb", "Game Boy", [".gb"], Cartridge, "Nintendo - Game Boy"),
+        new("gbc", "Game Boy Color", [".gbc"], Cartridge, "Nintendo - Game Boy Color"),
+        new("gba", "Game Boy Advance", [".gba"], Cartridge, "Nintendo - Game Boy Advance"),
+        new("genesis", "Genesis / Mega Drive", [".md", ".gen", ".smd"], Cartridge, "Sega - Mega Drive - Genesis"),
+        new("psx", "PlayStation", [".chd", ".pbp"], Disc, "Sony - PlayStation"),
+    ];
+
+    private static readonly Dictionary<string, PlatformInfo> ById = All.ToDictionary(x => x.Id, StringComparer.Ordinal);
+
+    public static PlatformInfo? Get(string id) => ById.GetValueOrDefault(id);
+
+    public static string? FromExtension(string extension)
     {
-        ".nes" => "nes",
-        ".gb" => "gb",
-        ".gbc" => "gbc",
-        _ => null
-    };
+        var lower = extension.ToLowerInvariant();
+        return All.FirstOrDefault(x => x.Extensions.Contains(lower))?.Id;
+    }
 }
 
 // Readable titles from ROM file names such as "Super_Mario_Bros_(USA)_[!].nes".

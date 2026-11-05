@@ -20,7 +20,7 @@ try
             {
                 var data = DataDirectory(Option(rest, "--data"));
                 var cores = Options(rest, "--core").Select(x => x.Split('=', 2)).ToDictionary(
-                    x => x.Length == 2 && x[0] is "nes" or "gb" or "gbc" ? x[0] : throw new ArgumentException("Use --core <nes|gb|gbc>=<absolute core path>."), x => x[1]);
+                    x => x.Length == 2 && Platforms.Get(x[0]) is not null ? x[0] : throw new ArgumentException($"Use --core <{string.Join('|', Platforms.All.Select(p => p.Id))}>=<absolute core path>."), x => x[1]);
                 LocalSettings.Save(data, new(Option(rest, "--retroarch") ?? throw new ArgumentException("--retroarch is required."), cores));
                 Console.WriteLine($"Saved launch settings in {data}.");
                 return 0;
@@ -90,7 +90,8 @@ try
         default:
             Console.WriteLine("Usage:");
             Console.WriteLine("  RetroBridge.Launcher pair <server-url> [--data <dir>]");
-            Console.WriteLine("  RetroBridge.Launcher configure --retroarch <path> --core nes=<path> [--core gb=<path>] [--core gbc=<path>] [--data <dir>]");
+            Console.WriteLine("  RetroBridge.Launcher configure --retroarch <path> --core nes=<path> [--core <system>=<path> ...] [--data <dir>]");
+            Console.WriteLine("    systems: " + string.Join(", ", Platforms.All.Select(x => x.Id)));
             Console.WriteLine("  RetroBridge.Launcher register [--data <dir>]      (handle retrobridge:// links from the play page)");
             Console.WriteLine("  RetroBridge.Launcher unregister");
             Console.WriteLine("  RetroBridge.Launcher doctor [--data <dir>]          (check pairing, server, RetroArch, cores, link handler, autostart)");
@@ -158,12 +159,12 @@ async Task<int> Doctor(string data)
     if (settings is not null)
     {
         Check(File.Exists(settings.RetroArch), $"RetroArch found: {settings.RetroArch}", $"RetroArch not found at {settings.RetroArch}. Run configure --retroarch <path>.");
-        foreach (var platform in new[] { "nes", "gb", "gbc" })
-        {
-            var core = settings.Cores.GetValueOrDefault(platform);
-            Check(core is not null && File.Exists(core), $"{platform.ToUpperInvariant()} core: {core}",
-                core is null ? $"No {platform.ToUpperInvariant()} core configured (configure --core {platform}=<path>)." : $"{platform.ToUpperInvariant()} core missing: {core}", essential: core is not null);
-        }
+        // Only configured systems are checked; the rest are listed so players know they can add them.
+        foreach (var (platform, core) in settings.Cores.Where(x => Platforms.Get(x.Key) is not null))
+            Check(File.Exists(core), $"{Platforms.Get(platform)!.Name} core: {core}", $"{Platforms.Get(platform)!.Name} core missing: {core}");
+        if (settings.Cores.Count == 0) Check(false, "", "No cores configured (configure --core nes=<path>).");
+        var unconfigured = Platforms.All.Where(x => !settings.Cores.ContainsKey(x.Id)).Select(x => x.Id).ToArray();
+        if (unconfigured.Length > 0) Console.WriteLine("  · Not set up here: " + string.Join(", ", unconfigured) + " (configure --core <system>=<path> to add one).");
     }
 
     Check(LinkHandler.IsRegistered(), "Play-page links open this companion.", "Play-page links are not registered. Run register for one-click play from this computer.", essential: false);
@@ -358,9 +359,9 @@ async Task<int> Pair(Uri server, string data)
 
 async Task<int> Launch(HttpClient client, Uri server, Guid userId, Game game, string executable, string core, string data)
 {
-    if (string.IsNullOrEmpty(game.Extension) || Platforms.FromExtension(game.Extension) != game.Platform || game.Size < 0 || game.Size > 64 * 1024 * 1024 ||
+    if (string.IsNullOrEmpty(game.Extension) || Platforms.FromExtension(game.Extension) != game.Platform || game.Size < 0 || game.Size > Platforms.Get(game.Platform)!.MaxContentBytes ||
         game.Id != game.Platform + "-" + game.Sha256)
-        throw new InvalidOperationException("Unsupported or invalid game metadata (prototype limit: 64 MiB).");
+        throw new InvalidOperationException("Unsupported or invalid game metadata (limit: 64 MiB per cartridge, 2 GiB per disc).");
     var saveDirectory = LaunchPlan.SaveDirectory(data, server.AbsoluteUri, userId, game);
     Directory.CreateDirectory(saveDirectory);
     var cache = Path.Combine(Path.GetFullPath(data), "cache");

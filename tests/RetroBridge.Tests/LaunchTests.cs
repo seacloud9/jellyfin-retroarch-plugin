@@ -20,6 +20,46 @@ public sealed class LaunchTests
     [Fact]
     public void InvalidChecksumCannotEscapeSaveDirectory() => Assert.Throws<ArgumentException>(() => LaunchPlan.SaveDirectory(Path.GetTempPath(), "server", Guid.NewGuid(), Game with { Sha256 = "../../escape" }));
 
+    [Theory]
+    [InlineData(".nes", "nes")]
+    [InlineData(".SFC", "snes")]
+    [InlineData(".smc", "snes")]
+    [InlineData(".z64", "n64")]
+    [InlineData(".n64", "n64")]
+    [InlineData(".v64", "n64")]
+    [InlineData(".gba", "gba")]
+    [InlineData(".md", "genesis")]
+    [InlineData(".gen", "genesis")]
+    [InlineData(".smd", "genesis")]
+    [InlineData(".chd", "psx")]
+    [InlineData(".pbp", "psx")]
+    [InlineData(".bin", null)] // ambiguous between Genesis and PlayStation
+    [InlineData(".cue", null)] // a multi-file disc; use CHD or PBP
+    [InlineData(".zip", null)]
+    public void ExtensionsMapToPlatforms(string extension, string? platform) => Assert.Equal(platform, Platforms.FromExtension(extension));
+
+    [Fact]
+    public void PlatformTableIsConsistent()
+    {
+        var extensions = Platforms.All.SelectMany(x => x.Extensions).ToArray();
+        Assert.Equal(extensions.Length, extensions.Distinct().Count());
+        Assert.All(Platforms.All, x => Assert.Matches("^[a-z0-9]{1,16}$", x.Id)); // game IDs are "<platform>-<sha256>"
+        Assert.All(extensions, x => Assert.Matches("^\\.[a-z0-9]{1,8}$", x));
+        Assert.Equal(Platforms.Disc, Platforms.Get("psx")!.MaxContentBytes);
+        Assert.All(Platforms.All, x => Assert.False(string.IsNullOrEmpty(ArtworkMatcher.Systems[x.Id])));
+    }
+
+    [Theory]
+    [InlineData("snes", ".sfc")]
+    [InlineData("n64", ".z64")]
+    [InlineData("genesis", ".md")]
+    [InlineData("psx", ".chd")]
+    public void NewPlatformsGetIsolatedSaveDirectories(string platform, string extension)
+    {
+        var game = Game with { Id = platform + "-" + Game.Sha256, Platform = platform, Extension = extension };
+        Assert.EndsWith(Path.Combine(platform, Game.Sha256), LaunchPlan.SaveDirectory(Path.GetTempPath(), "server", Guid.NewGuid(), game));
+    }
+
     [Fact]
     public void InvalidPlatformCannotEscapeSaveDirectory() => Assert.Throws<ArgumentException>(() => LaunchPlan.SaveDirectory(Path.GetTempPath(), "server", Guid.NewGuid(), Game with { Platform = "../../escape" }));
 
