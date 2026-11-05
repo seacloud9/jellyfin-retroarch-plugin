@@ -164,7 +164,127 @@ def write_fixture(destination):
     return hashlib.sha256(data).hexdigest()
 
 
+def build_gba_rom():
+    """Game Boy Advance save-counter: battery SRAM at 0x0E000000 holds RB01 and a counter at offset 4.
+
+    ARM instructions are encoded directly. The "SRAM_V" marker tells emulators which save type the cartridge has.
+    """
+    words = []
+
+    def at():
+        return 0x08000000 + 4 * len(words)
+
+    def ldrb(rd, rn, offset): words.append(0xE5D00000 | rn << 16 | rd << 12 | offset)
+    def strb(rd, rn, offset): words.append(0xE5C00000 | rn << 16 | rd << 12 | offset)
+    def cmp(rn, value): words.append(0xE3500000 | rn << 16 | value)
+    def mov(rd, value): words.append(0xE3A00000 | rd << 12 | value)
+    def add(rd, rn, value): words.append(0xE2800000 | rn << 16 | rd << 12 | value)
+
+    def branch(condition, target):
+        words.append(condition << 28 | 0x0A000000 | ((target - (at() + 8)) >> 2) & 0xFFFFFF)
+
+    def fix(index, condition, target):
+        words[index] = condition << 28 | 0x0A000000 | ((target - (0x08000000 + 4 * index + 8)) >> 2) & 0xFFFFFF
+
+    branch(0xE, 0x080000C0)                      # entry point: skip the header
+    words.extend([0] * (0xC0 // 4 - 1))
+    words.append(0xE3A0040E)                     # mov r0, #0x0E000000
+    pending = []
+    for offset, char in enumerate(b'RB01'):
+        ldrb(1, 0, offset)
+        cmp(1, char)
+        pending.append(len(words))
+        words.append(0)                          # bne init (fixed below)
+    pending_increment = len(words)
+    words.append(0)                              # b increment
+    init = at()
+    for offset, char in enumerate(b'RB01'):
+        mov(1, char)
+        strb(1, 0, offset)
+    mov(1, 0)
+    strb(1, 0, 4)
+    increment = at()
+    ldrb(1, 0, 4)
+    add(1, 1, 1)
+    strb(1, 0, 4)
+    branch(0xE, at())                            # loop forever
+    for index in pending:
+        fix(index, 0x1, init)
+    fix(pending_increment, 0xE, increment)
+    rom = bytearray(b''.join(w.to_bytes(4, 'little') for w in words))
+    rom[0xA0:0xAC] = b'RB SAVE TEST'
+    rom[0xAC:0xB0] = b'ZRBE'
+    rom[0xB2] = 0x96
+    rom[0xBD] = -sum(rom[0xA0:0xBD]) - 0x19 & 0xFF  # header checksum
+    rom += b'SRAM_V113\0\0\0'
+    rom += bytes(-len(rom) % 0x4000)
+    return bytes(rom)
+
+
+def build_genesis_rom():
+    """Genesis / Mega Drive save-counter: battery SRAM on odd bytes from 0x200001 holds R, B, 0, 1 and a counter.
+
+    68000 instructions are encoded directly; the header declares the SRAM so emulators map it.
+    """
+    code = bytearray()
+
+    def emit(*words):
+        for word in words:
+            code.extend(word.to_bytes(2, 'big'))
+
+    emit(0x41F9, 0x0020, 0x0001)                 # lea $200001, a0
+    branches = []
+    for index, char in enumerate(b'RB01'):
+        if index == 0: emit(0x0C10, char)        # cmpi.b #char, (a0)
+        else: emit(0x0C28, char, 2 * index)      # cmpi.b #char, 2*index(a0)
+        branches.append(len(code))
+        emit(0x6600)                             # bne.s init (fixed below)
+    skip = len(code)
+    emit(0x6000)                                 # bra.s increment
+    init = len(code)
+    for index, char in enumerate(b'RB01'):
+        if index == 0: emit(0x10BC, char)        # move.b #char, (a0)
+        else: emit(0x117C, char, 2 * index)      # move.b #char, 2*index(a0)
+    emit(0x4228, 8)                              # clr.b 8(a0)
+    increment = len(code)
+    emit(0x5228, 8)                              # addq.b #1, 8(a0)
+    emit(0x60FE)                                 # bra.s * (loop forever)
+    for at in branches:
+        code[at + 1] = (init - (at + 2)) & 0xFF
+    code[skip + 1] = (increment - (skip + 2)) & 0xFF
+    rom = bytearray(0x200)
+    rom[0:4] = (0x00FFFE00).to_bytes(4, 'big')   # initial stack pointer
+    rom[4:8] = (0x00000200).to_bytes(4, 'big')   # entry point
+    for vector in range(2, 64):                  # every exception lands in the idle loop
+        rom[vector * 4:vector * 4 + 4] = (0x200 + increment + 4).to_bytes(4, 'big')
+    header = {0x100: b'SEGA MEGA DRIVE ', 0x110: b'(C)RBSV 2026.NOV', 0x120: b'RB SAVE TEST'.ljust(48),
+              0x150: b'RB SAVE TEST'.ljust(48), 0x180: b'GM RB000001-00', 0x190: b'J'.ljust(16), 0x1F0: b'JUE'.ljust(16)}
+    for offset, value in header.items():
+        rom[offset:offset + len(value)] = value
+    rom[0x1B0:0x1BC] = b'RA' + bytes([0xF8, 0x20]) + (0x200001).to_bytes(4, 'big') + (0x203FFF).to_bytes(4, 'big')
+    rom[0x1C8:0x1D0] = b' ' * 8
+    rom += code
+    rom += bytes(-len(rom) % 0x20000)
+    rom[0x1A0:0x1A8] = (0).to_bytes(4, 'big') + (len(rom) - 1).to_bytes(4, 'big')
+    return bytes(rom)
+
+
+def write_gba_fixture(destination):
+    return _write(destination, build_gba_rom())
+
+
+def write_genesis_fixture(destination):
+    return _write(destination, build_genesis_rom())
+
+
+def _write(destination, data):
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    return hashlib.sha256(data).hexdigest()
+
+
 if __name__ == '__main__':
     destination = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('artifacts/fixtures/save-counter.nes')
-    writer = write_gb_fixture if destination.suffix == '.gb' else write_fixture
+    writer = {'.gb': write_gb_fixture, '.gba': write_gba_fixture, '.md': write_genesis_fixture}.get(destination.suffix, write_fixture)
     print(f'{writer(destination)}  {destination}')
