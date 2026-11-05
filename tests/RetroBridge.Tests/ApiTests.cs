@@ -26,7 +26,7 @@ public sealed class ApiTests : IDisposable
     private readonly PluginConfiguration _configuration = new();
     private readonly TestTime _time = new();
     private int _saves;
-    private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets);
+    private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets, BrowserPlayTests.TestCores);
     private readonly ArtworkService _artwork = new(Path.Combine(Path.GetTempPath(), "retrobridge-art-" + Guid.NewGuid().ToString("N")));
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
@@ -481,7 +481,10 @@ public sealed class ApiTests : IDisposable
         using (var prepared = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Web/Prepare", "Administrator", Player, "d"))) prepared.EnsureSuccessStatusCode();
         var config = await Config();
         Assert.True(config.GetProperty("enabled").GetBoolean());
-        Assert.Equal("mgba", config.GetProperty("cores").GetProperty("gbc").GetString());
+        Assert.Equal("core", config.GetProperty("cores").GetProperty("gbc").GetString());
+        // Only platforms the administrator allowed and whose core is downloaded are offered.
+        Assert.Equal(new[] { "nes", "gbc" }, config.GetProperty("platforms").EnumerateArray().Select(x => x.GetString()).ToArray());
+        Assert.Equal(512L * 1024 * 1024, config.GetProperty("maxBytes").GetInt64());
         Assert.Contains("wasm-unsafe-eval", await Csp());
         using (var served = await _client.GetAsync("/RetroBridge/Web/emu.js"))
         {

@@ -45,7 +45,8 @@
   .dpad { display: grid; grid-template: repeat(3, 52px) / repeat(3, 52px); }
   .pad button, .system button { background: #2a2a31; color: #eee; border: 0; border-radius: 10px; font-weight: 700; touch-action: none; }
   .pad button:active, .pad button.down, .system button.down { background: #45454f; }
-  .actions { display: grid; grid-template-columns: repeat(2, 64px); gap: 12px; }
+  .actions { display: grid; grid-template-columns: repeat(var(--columns, 2), 64px); gap: 12px; }
+  .actions .shoulder { height: 40px; border-radius: 10px; font-size: .8rem; }
   .actions .round { width: 64px; height: 64px; border-radius: 50%; }
   .system { display: flex; gap: 12px; }
   .system button { padding: 8px 14px; font-size: .8rem; }
@@ -61,12 +62,12 @@
     <div class="bar">
       <label>Play on<select id="device"></select></label>
       <label>Search<input id="search" type="search" autocomplete="off"></label>
-      <label>Platform<select id="platform"><option value="">All</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select></label>
+      <label>Platform<select id="platform"><option value="">All</option></select></label>
     </div>
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="games"></ul>
   </div>
-<p class="muted" id="third-party" hidden>In-browser play uses open-source emulators: RetroArch (GPL-3.0), FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), and Nostalgist (MIT). <a href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" target="_blank" rel="noopener">Licenses and source code</a>.</p>
+<p class="muted" id="third-party" hidden>In-browser play uses open-source emulators: RetroArch (GPL-3.0), FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), PCSX ReARMed (GPL-2.0-or-later), and Nostalgist (MIT). <a href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" target="_blank" rel="noopener">Licenses and source code</a>.</p>
 <details class="diagnostics" id="diagnostics">
   <summary>Diagnostics</summary>
   <p>Share this report if something does not work. It contains no passwords or tokens.</p>
@@ -81,13 +82,19 @@
     <button data-button="left" aria-label="Left">◀</button><span></span><button data-button="right" aria-label="Right">▶</button>
     <span></span><button data-button="down" aria-label="Down">▼</button><span></span>
   </div>
-  <div class="actions pad"><button class="round" data-button="b">B</button><button class="round" data-button="a">A</button></div>
+  <div class="actions pad" id="actions"></div>
   <div class="system"><button data-button="select">SELECT</button><button data-button="start">START</button></div>
   <div class="controls-end"><button id="fullscreen" type="button" hidden>Fullscreen</button><button id="exit" type="button">Save and exit</button></div>
 </div>
 <script>
 (function () {
-  var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {} };
+  var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {}, MaxBytes: Infinity };
+  // Same list as RetroBridge.Domain.Platforms.
+  var PLATFORMS = { nes: 'NES', snes: 'SNES', n64: 'Nintendo 64', gb: 'Game Boy', gbc: 'Game Boy Color', gba: 'Game Boy Advance', genesis: 'Genesis / Mega Drive', psx: 'PlayStation' };
+  // Touch buttons per system: [RetroArch button, label]. Shoulder buttons go on the top row.
+  var FACE = { snes: [['y', 'Y'], ['x', 'X'], ['b', 'B'], ['a', 'A']], genesis: [['y', 'A'], ['b', 'B'], ['a', 'C']],
+    psx: [['y', '□'], ['x', '△'], ['b', '✕'], ['a', '○']] };
+  var SHOULDERS = { snes: true, gba: true, psx: true };
   // Diagnostics: recent errors and outcomes for the support report (no tokens are ever recorded).
   var diag = { version: null, errors: [], lastLaunch: null, browser: null };
   function note(kind, message) {
@@ -101,6 +108,7 @@
   var android = /Android/.test(navigator.userAgent);
   var mobile = ios || android;
   var $ = function (id) { return document.getElementById(id); };
+  Object.keys(PLATFORMS).forEach(function (id) { var o = document.createElement('option'); o.value = id; o.textContent = PLATFORMS[id]; $('platform').append(o); });
 
   // Reuse the Jellyfin web client's session from this origin; this page stores nothing.
   function session() {
@@ -152,18 +160,20 @@
       play.disabled = !devices.length; if (!devices.length) play.title = 'Pair a device to play';
       play.addEventListener('click', function () { launch(g, play); });
       li.append(cover, name, play);
-      if (web.Enabled && web.Platforms.includes(g.Platform)) {
-        var inBrowser = document.createElement('button');
-        inBrowser.className = 'browser'; inBrowser.textContent = 'Play in browser'; inBrowser.setAttribute('aria-label', 'Play ' + g.Title + ' in this browser');
-        inBrowser.addEventListener('click', function () { playInBrowser(g); });
+      if (inBrowser(g)) {
+        var here = document.createElement('button');
+        here.className = 'browser'; here.textContent = 'Play in browser'; here.setAttribute('aria-label', 'Play ' + g.Title + ' in this browser');
+        here.addEventListener('click', function () { playInBrowser(g); });
         // iOS cannot run a companion, so in-browser play is the main action there (and without a paired device).
-        if (ios || !devices.length) { inBrowser.className = 'play'; play.className = 'browser'; li.insertBefore(inBrowser, play); }
-        else li.append(inBrowser);
+        if (ios || !devices.length) { here.className = 'play'; play.className = 'browser'; li.insertBefore(here, play); }
+        else li.append(here);
       }
       list.append(li);
     });
     if (!list.children.length) { var empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
   }
+  // Very large discs are left to native play: the whole game is held in the page's memory.
+  function inBrowser(g) { return web.Enabled && web.Platforms.includes(g.Platform) && !(g.Size > (web.MaxBytes || Infinity)); }
   function selected() { return devices.filter(function (d) { return d.Id === $('device').value; })[0]; }
   async function launch(game, button) {
     var device = selected();
@@ -211,7 +221,7 @@
   async function saveNow(playing, keepalive) {
     if (!emulator) return;
     try {
-      var bytes = new Uint8Array(await (await emulator.saveSRAM()).arrayBuffer());
+      var bytes = await readSave(playing.game);
       if (!bytes.length || same(bytes, playing.last)) return;
       var route = 'Games/' + encodeURIComponent(playing.game.Id) + '/Saves/' + encodeURIComponent(playing.name);
       var response = await raw('PUT', route + '?baseRevision=' + playing.revision, bytes, keepalive);
@@ -232,7 +242,25 @@
     try { if (navigator.wakeLock && emulator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); }
     catch (error) { note('wake lock', error.message); }
   }
+  // Nostalgist only knows the save folder of cores in its own list. For others, RetroArch saves under the core's
+  // display name, so the battery save is placed and read there directly.
+  var SAVE_FOLDERS = { clownmdemu: 'ClownMDEmu' }, SAVES = '/home/web_user/retroarch/userdata/saves/';
+  function savePath(game) { return SAVES + SAVE_FOLDERS[web.Cores[game.Platform]] + '/' + game.Id + '.srm'; }
+  async function readSave(game) {
+    if (!SAVE_FOLDERS[web.Cores[game.Platform]]) return new Uint8Array(await (await emulator.saveSRAM()).arrayBuffer());
+    var fs = emulator.getEmscriptenFS(), path = savePath(game), last = -1;
+    try { fs.unlink(path); } catch (_) {}
+    emulator.getEmscriptenModule()._cmd_savefiles();
+    for (var i = 0; i < 50; i++) {
+      await new Promise(function (r) { setTimeout(r, 100); });
+      var size = -1; try { size = fs.stat(path).size; } catch (_) {}
+      if (size > 0 && size === last) return fs.readFile(path);
+      last = size;
+    }
+    throw new Error('the emulator did not write its save');
+  }
   async function playInBrowser(game, fromLink) {
+    showButtons(game.Platform);
     $('player').hidden = false; playerStatus('Loading ' + game.Title + '…');
     try {
       await loadNostalgist();
@@ -245,12 +273,17 @@
         var download = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Saves/' + encodeURIComponent(name));
         if (download.ok) { sram = await download.blob(); revision = server.Revision; }
       }
-      var core = web.Cores[game.Platform];
+      var core = web.Cores[game.Platform], sramBytes = sram ? new Uint8Array(await sram.arrayBuffer()) : null;
       emulator = await Nostalgist.launch({
         element: $('screen'),
         core: { name: core, js: new URL('Web/' + core + '_libretro.js', location.href).href, wasm: new URL('Web/' + core + '_libretro.wasm', location.href).href },
         rom: { fileName: game.Id + game.Extension, fileContent: await content.blob() },
-        sram: sram,
+        sram: SAVE_FOLDERS[core] ? undefined : sram,
+        beforeLaunch: SAVE_FOLDERS[core] && sramBytes ? function (n) {
+          var fs = n.getEmscriptenFS(), path = savePath(game);
+          fs.mkdirTree(path.slice(0, path.lastIndexOf('/')));
+          fs.writeFile(path, sramBytes);
+        } : undefined,
       });
       playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
       window.__browserPlay = { booted: true, revision: revision };
@@ -288,13 +321,25 @@
   // iOS suspends hidden tabs: save whenever the page is hidden.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(true); });
   window.addEventListener('pagehide', function () { flush(true); });
-  document.querySelectorAll('#player [data-button]').forEach(function (button) {
+  function showButtons(platform) {
+    var box = $('actions'), face = FACE[platform] || [['b', 'B'], ['a', 'A']], columns = face.length === 3 ? 3 : 2;
+    box.replaceChildren(); box.style.setProperty('--columns', columns);
+    if (SHOULDERS[platform]) [['l', 'L'], ['r', 'R']].forEach(function (x, i) { box.append(pad(x, 'shoulder')); if (columns === 3 && i === 0) box.append(document.createElement('span')); });
+    face.forEach(function (x) { box.append(pad(x, 'round')); });
+  }
+  function pad(x, kind) {
+    var button = document.createElement('button');
+    button.className = kind; button.setAttribute('data-button', x[0]); button.textContent = x[1]; button.setAttribute('aria-label', x[1]);
+    bind(button); return button;
+  }
+  document.querySelectorAll('#player [data-button]').forEach(bind);
+  function bind(button) {
     var name = button.getAttribute('data-button');
     function down(event) { event.preventDefault(); button.classList.add('down'); if (emulator) emulator.pressDown(name); }
     function up(event) { event.preventDefault(); button.classList.remove('down'); if (emulator) emulator.pressUp(name); }
     button.addEventListener('pointerdown', down);
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (type) { button.addEventListener(type, up); });
-  });
+  }
 
   async function start() {
     auth = session();
@@ -319,9 +364,9 @@
       $('third-party').hidden = !web.Enabled;
       $('library').hidden = false; render();
       // #play=<game id> opens a game directly in the browser (shareable link).
-      var direct = /^#play=([a-z]+-[0-9a-f]{64})$/.exec(location.hash);
+      var direct = /^#play=([a-z0-9]+-[0-9a-f]{64})$/.exec(location.hash);
       var target = direct && games.filter(function (g) { return g.Id === direct[1]; })[0];
-      if (target && web.Enabled && web.Platforms.includes(target.Platform)) playInBrowser(target, true);
+      if (target && inBrowser(target)) playInBrowser(target, true);
     } catch (error) {
       setup([error.status === 403 ? 'Your account does not have access to RetroBridge. Ask an administrator.' : error.status === 401 ? 'Your Jellyfin session expired. Sign in again, then reload.' : 'RetroBridge is unavailable right now.']);
     }

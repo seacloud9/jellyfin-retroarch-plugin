@@ -24,7 +24,7 @@ spec = importlib.util.spec_from_file_location('smoke', REPO / 'scripts/jellyfin-
 smoke = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smoke)
 from version import PLUGIN_ARCHIVE  # noqa: E402
-from fixture_rom import write_fixture, write_gb_fixture
+from fixture_rom import write_fixture, write_gb_fixture, write_gba_fixture, write_genesis_fixture
 
 
 def main():
@@ -44,6 +44,8 @@ def main():
                 (plugin / name).write_bytes(package.read(name))
         write_fixture(workspace / 'games/save-counter.nes')
         write_gb_fixture(workspace / 'games/save-counter.gb')
+        write_gba_fixture(workspace / 'games/save-counter.gba')
+        write_genesis_fixture(workspace / 'games/save-counter.md')
         try:
             # On Linux, bind-mounted files would otherwise be root-owned and block temp cleanup.
             user = ['--user', f'{os.getuid()}:{os.getgid()}'] if sys.platform.startswith('linux') else []
@@ -74,7 +76,7 @@ def main():
             if not server.request('POST', '/RetroBridge/Web/Prepare', token=admin)['Ready']:
                 raise AssertionError('Emulator files not ready after download')
             web = server.request('GET', '/RetroBridge/Web/Config', token=player)
-            if not web['Enabled'] or sorted(web['Platforms']) != ['gb', 'gbc', 'nes']:
+            if not web['Enabled'] or sorted(web['Platforms']) != ['gb', 'gba', 'gbc', 'genesis', 'nes']:
                 raise AssertionError(f'Unexpected browser play config: {web}')
             script = server.request('GET', '/RetroBridge/Web/nostalgist.umd.js', raw=True)
             if hashlib.sha256(script).hexdigest() != '37ad8729399fa8164cf818932dc856c9cbcb243613866518d48020fe5025d9e1':
@@ -99,10 +101,14 @@ def main():
                     if not listed:
                         return 0, None
                     data = server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Saves/' + game['Id'] + '.srm', token=player, raw=True)
-                    return listed[0]['Revision'], data[4] if data[:4] == b'RB01' else None
+                    # Genesis cartridges wire save RAM to odd bytes only.
+                    for view in (data, data[1::2]):
+                        if view[:4] == b'RB01':
+                            return listed[0]['Revision'], view[4]
+                    return listed[0]['Revision'], None
 
                 results = {}
-                for platform in ('nes', 'gb'):
+                for platform in ('nes', 'gb', 'gba', 'genesis'):
                     game = games[platform]
                     counters = []
                     for boot in (1, 2):
@@ -112,6 +118,7 @@ def main():
                         while server_counter(game)[1] != boot:
                             if time.monotonic() > deadline:
                                 subprocess.run(['xcrun', 'simctl', 'io', 'booted', 'screenshot', str(REPO / 'artifacts/browser-play-failure.png')], capture_output=True)
+                                subprocess.run(['xcrun', 'simctl', 'io', 'booted', 'screenshot', str(REPO / f'artifacts/browser-play-failure-{platform}.png')], capture_output=True)
                                 raise AssertionError(f'{platform}: server save did not reach counter {boot}: {server_counter(game)}')
                             time.sleep(2)
                         counters.append(server_counter(game))
@@ -124,7 +131,7 @@ def main():
         finally:
             smoke.docker('rm', '-f', container)
     (REPO / 'artifacts/browser-play-smoke.json').write_text(json.dumps(summary, indent=2) + '\n')
-    print('PASS: in-browser play files pinned and served, CSP widened only when enabled' + (', NES and Game Boy saves synced from iOS Safari' if args.ios else ''))
+    print('PASS: in-browser play files pinned and served, CSP widened only when enabled' + (', NES, Game Boy, GBA, and Genesis saves synced from iOS Safari' if args.ios else ''))
     print(json.dumps(summary.get('ios_safari', {})))
 
 

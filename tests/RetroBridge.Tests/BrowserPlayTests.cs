@@ -12,11 +12,14 @@ public sealed class BrowserPlayTests : IDisposable
     internal static readonly byte[] Script = "console.log(1)"u8.ToArray();
     internal static readonly byte[] Core = Zip(("core_libretro.js", "core"u8.ToArray()), ("core_libretro.wasm", [0, 0x61, 0x73, 0x6D]),
         ("../../escape.txt", "x"u8.ToArray()), ("notes.txt", "x"u8.ToArray()));
+    internal static readonly byte[] Other = Zip(("other_libretro.js", "other"u8.ToArray()), ("other_libretro.wasm", [0, 0x61, 0x73, 0x6D]));
     internal static readonly BrowserAsset[] TestAssets =
     [
         new("https://upstream.test/emu.js", Hash(Script), ["emu.js"]),
         new("https://upstream.test/core.zip", Hash(Core), ["core_libretro.js", "core_libretro.wasm"]),
+        new("https://upstream.test/other.zip", Hash(Other), ["other_libretro.js", "other_libretro.wasm"]),
     ];
+    internal static readonly Dictionary<string, string> TestCores = new() { ["nes"] = "core", ["gbc"] = "core", ["psx"] = "other" };
 
     private static string Hash(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
@@ -36,7 +39,7 @@ public sealed class BrowserPlayTests : IDisposable
         Assert.False(service.Ready);
         await service.PrepareAsync(default);
         Assert.True(service.Ready);
-        Assert.Equal(new[] { "core_libretro.js", "core_libretro.wasm", "emu.js" }, Directory.GetFiles(_directory).Select(f => Path.GetFileName(f)!).Order().ToArray());
+        Assert.Equal(new[] { "core_libretro.js", "core_libretro.wasm", "emu.js", "other_libretro.js", "other_libretro.wasm" }, Directory.GetFiles(_directory).Select(f => Path.GetFileName(f)!).Order().ToArray());
         Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(_directory)!, "escape.txt")));
         Assert.Null(service.Open("notes.txt"));
         Assert.Null(service.Open("../catalog.json"));
@@ -57,10 +60,28 @@ public sealed class BrowserPlayTests : IDisposable
     {
         var files = BrowserPlayService.Assets.SelectMany(a => a.Files).ToHashSet();
         Assert.Contains("nostalgist.umd.js", files);
-        foreach (var core in BrowserPlayService.Cores.Values)
+        foreach (var core in BrowserPlayService.PinnedCores.Values)
             Assert.True(files.Contains(core + "_libretro.js") && files.Contains(core + "_libretro.wasm"), core);
         Assert.All(BrowserPlayService.Assets, a => Assert.Matches("^[0-9a-f]{64}$", a.Sha256));
         Assert.DoesNotContain("gambatte", string.Join(",", files));
+        // Non-commercial licenses are not GPL-compatible; these must never be served to browsers.
+        foreach (var excluded in new[] { "snes9x", "genesis_plus_gx", "picodrive" }) Assert.DoesNotContain(excluded, string.Join(",", files));
+        Assert.All(BrowserPlayService.PinnedCores.Keys, p => Assert.NotNull(RetroBridge.Domain.Platforms.Get(p)));
+    }
+
+    [Fact]
+    public async Task CoresBecomeReadyIndividually()
+    {
+        // An upgrade that adds a core must not turn off the cores that were already downloaded.
+        var service = new BrowserPlayService(_directory, new FakeUpstream(), TestAssets, TestCores);
+        await service.PrepareAsync(default);
+        File.Delete(Path.Combine(_directory, "other_libretro.wasm"));
+        Assert.False(service.Ready);
+        Assert.True(service.CoreReady("core"));
+        Assert.False(service.CoreReady("other"));
+        Assert.False(service.CoreReady("../core"));
+        File.Delete(Path.Combine(_directory, "emu.js"));
+        Assert.False(service.CoreReady("core")); // the shared emulator script is required too
     }
 
     public void Dispose()
@@ -75,6 +96,7 @@ public sealed class BrowserPlayTests : IDisposable
             {
                 "/emu.js" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Script) },
                 "/core.zip" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Core) },
+                "/other.zip" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Other) },
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
             });
     }

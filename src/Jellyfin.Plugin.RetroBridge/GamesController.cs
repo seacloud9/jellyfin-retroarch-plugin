@@ -192,11 +192,15 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay()) return Forbid();
         var config = configuration();
+        string[] platforms = config.BrowserPlay
+            ? [.. config.BrowserPlatforms.Distinct().Where(p => browser.Cores.TryGetValue(p, out var core) && browser.CoreReady(core))]
+            : [];
         return Ok(new
         {
-            Enabled = config.BrowserPlay && browser.Ready,
-            Platforms = config.BrowserPlay ? config.BrowserPlatforms.Where(BrowserPlayService.Cores.ContainsKey) : [],
-            Cores = BrowserPlayService.Cores,
+            Enabled = config.BrowserPlay && platforms.Length > 0,
+            Platforms = platforms,
+            Cores = browser.Cores,
+            MaxBytes = BrowserPlayService.MaxGameBytes,
         });
     }
 

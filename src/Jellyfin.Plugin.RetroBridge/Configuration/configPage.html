@@ -3,7 +3,7 @@
 <div id="RetroBridgePage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-textarea,emby-select">
   <div data-role="content"><div class="content-primary">
     <h1>RetroBridge</h1>
-    <p>Prototype · NES, Game Boy, Game Boy Color · Native RetroArch</p>
+    <p>Prototype · NES, SNES, Nintendo 64, Game Boy / Color / Advance, Genesis / Mega Drive, PlayStation · Native RetroArch</p>
     <form id="RetroBridgeForm">
       <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
       <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
@@ -13,7 +13,11 @@
         <label><input type="checkbox" class="BrowserPlatform" value="nes" /> NES (FCEUmm)</label>
         <label><input type="checkbox" class="BrowserPlatform" value="gb" /> Game Boy (mGBA)</label>
         <label><input type="checkbox" class="BrowserPlatform" value="gbc" /> Game Boy Color (mGBA)</label>
-        <p>This server downloads pinned, checksum-verified emulator files (about 7 MB) from their open-source projects and serves them to players. Players never contact a third party.
+        <label><input type="checkbox" class="BrowserPlatform" value="gba" /> Game Boy Advance (mGBA)</label>
+        <label><input type="checkbox" class="BrowserPlatform" value="genesis" /> Genesis / Mega Drive (ClownMDEmu)</label>
+        <label><input type="checkbox" class="BrowserPlatform" value="psx" /> PlayStation (PCSX ReARMed, discs up to 512 MiB, heavy on phones)</label>
+        <p>SNES and Nintendo 64 play natively only: no browser emulator for them has a license that allows serving it from this server.</p>
+        <p>This server downloads pinned, checksum-verified emulator files (about 12 MB) from their open-source projects and serves them to players. Players never contact a third party.
         <button is="emby-button" id="PrepareBrowser" type="button" class="raised">Download emulator files</button></p>
       </fieldset>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save settings</span></button>
@@ -25,7 +29,7 @@
     <p id="ScanStatus" role="status" aria-live="polite"></p>
     <h2>Game library</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
-    <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option></select>
+    <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option><option value="gba">Game Boy Advance</option><option value="snes">SNES</option><option value="n64">Nintendo 64</option><option value="genesis">Genesis / Mega Drive</option><option value="psx">PlayStation</option></select>
     <p>Share the play page with players (it also appears in the companion after pairing). Jellyfin's main menu shows plugin pages to administrators only.</p>
     <p><code id="PlayUrl"></code> <button is="emby-button" id="CopyPlayUrl" type="button" class="raised">Copy link</button> <a id="PlayLink" href="#" target="_blank" rel="noopener">Open</a></p>
     <ul id="GameList"></ul>
