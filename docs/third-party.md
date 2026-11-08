@@ -27,3 +27,6 @@ Native RetroArch on desktop and Android is unaffected; players can use any core 
 
 Native play uses RetroArch and cores that the player installs separately; RetroBridge does not distribute them.
 
+## Included in RetroBridge releases
+
+The plugin itself contains eight Nova64 demo carts (`src/Jellyfin.Plugin.RetroBridge/Demos/*.nova`), copied unmodified from https://github.com/seacloud9/nova64 at tag `v0.5.7` (`examples/<name>/<name>.nova`). They are MIT-licensed; the license text is in `Demos/LICENSE.txt`.

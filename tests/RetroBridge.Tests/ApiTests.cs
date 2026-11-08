@@ -23,11 +23,13 @@ public sealed class ApiTests : IDisposable
     private readonly IHost _host;
     private readonly HttpClient _client;
     private readonly CatalogService _catalog = new();
-    private readonly PluginConfiguration _configuration = new();
+    // Demos are on by default in the plugin; tests that scan fixtures expect only their own games.
+    private readonly PluginConfiguration _configuration = new() { IncludeDemos = false };
     private readonly TestTime _time = new();
     private int _saves;
     private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets, BrowserPlayTests.TestCores);
     private readonly ArtworkService _artwork = new(Path.Combine(Path.GetTempPath(), "retrobridge-art-" + Guid.NewGuid().ToString("N")));
+    private readonly DemoLibrary _demos = new(Path.Combine(Path.GetTempPath(), "retrobridge-demos-" + Guid.NewGuid().ToString("N")));
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
     {
@@ -38,6 +40,7 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton(_artwork);
             services.AddSingleton(_browser);
+            services.AddSingleton(_demos);
             services.AddSingleton(new SaveStore(Path.Combine(Path.GetTempPath(), "retrobridge-saves-" + Guid.NewGuid().ToString("N"))));
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
@@ -504,7 +507,25 @@ public sealed class ApiTests : IDisposable
             user == Player ? [new("retrobridge-mine", "Laptop", null)] : [new("retrobridge-theirs", "Other", null)];
     }
 
-    public void Dispose() { _client.Dispose(); _host.Dispose(); }
+    [Fact]
+    public async Task BuiltInDemosAreScannedAndServedOnlyWhileIncluded()
+    {
+        _configuration.IncludeDemos = true;
+        _client.DefaultRequestHeaders.Add("Test-Role", "Administrator");
+        (await _client.PostAsync("/RetroBridge/Scan?wait=true", null)).EnsureSuccessStatusCode();
+        var games = (await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games?platform=nova64"))!;
+        Assert.Equal(DemoLibrary.Names.Count, games.Length);
+        var hello = Assert.Single(games, x => x.Title == "Hello 3D");
+        Assert.Equal(".nova", hello.Extension);
+        var bytes = await _client.GetByteArrayAsync($"/RetroBridge/Games/{hello.Id}/Content");
+        Assert.Equal("PK"u8.ToArray(), bytes[..2]); // a zip cart
+        _configuration.IncludeDemos = false;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/RetroBridge/Games/{hello.Id}/Content")).StatusCode);
+        (await _client.PostAsync("/RetroBridge/Scan?wait=true", null)).EnsureSuccessStatusCode();
+        Assert.Empty((await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games?platform=nova64"))!);
+    }
+
+    public void Dispose() { _client.Dispose(); _host.Dispose(); if (Directory.Exists(_demos.Directory)) Directory.Delete(_demos.Directory, true); }
 }
 
 internal sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

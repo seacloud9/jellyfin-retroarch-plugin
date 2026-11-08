@@ -14,7 +14,7 @@ public sealed record AccessRequest(string[]? PlayerUserIds);
 [ApiController]
 [Route("RetroBridge")]
 [Authorize]
-public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, SaveStore saves, BrowserPlayService browser, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
+public sealed class GamesController(CatalogService catalog, LaunchTickets tickets, IPairedDevices devices, ArtworkService artwork, SaveStore saves, BrowserPlayService browser, DemoLibrary demos, Func<PluginConfiguration> configuration, Action<PluginConfiguration> saveConfiguration) : ControllerBase
 {
     // Claim types set by Jellyfin's authentication handler.
     internal const string UserIdClaim = "Jellyfin-UserId";
@@ -229,7 +229,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     [Authorize(Policy = Policies.RequiresElevation)]
     public async Task<IActionResult> Scan([FromQuery] bool full, [FromQuery] bool wait, CancellationToken cancellationToken)
     {
-        var roots = configuration().GameRoots.ToArray();
+        var roots = demos.Roots(configuration());
         if (!wait)
             return catalog.TryStartBackground(roots, full) ? Accepted(ScanStatusBody()) : Conflict(new { Message = "A scan is already running." });
         var result = await catalog.ScanAsync(roots, cancellationToken, full);
@@ -291,7 +291,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         var item = Visible().FirstOrDefault(x => x.Game.Id == id);
         if (item is null) return NotFound();
         // Revoking a configured root takes effect immediately, before the next scan.
-        if (!configuration().GameRoots.Any(root => Path.GetFullPath(root) == item.Root)) return NotFound();
+        if (!demos.Allows(configuration(), item.Root)) return NotFound();
         try
         {
             var path = SafeContent.Resolve(item.Root, item.RelativePath);

@@ -24,6 +24,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Experimental in-browser play (WASM). Off by default; platforms limit which games offer it.
     public bool BrowserPlay { get; set; }
     public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc", "gba", "genesis", "nova64"];
+
+    // List the Nova64 demo carts built into the plugin alongside the game folders.
+    public bool IncludeDemos { get; set; } = true;
 }
 
 public sealed class GameAccess

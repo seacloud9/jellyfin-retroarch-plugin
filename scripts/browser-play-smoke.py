@@ -76,7 +76,7 @@ def main():
             if not server.request('POST', '/RetroBridge/Web/Prepare', token=admin)['Ready']:
                 raise AssertionError('Emulator files not ready after download')
             web = server.request('GET', '/RetroBridge/Web/Config', token=player)
-            if not web['Enabled'] or sorted(web['Platforms']) != ['gb', 'gba', 'gbc', 'genesis', 'nes']:
+            if not web['Enabled'] or sorted(web['Platforms']) != ['gb', 'gba', 'gbc', 'genesis', 'nes', 'nova64']:
                 raise AssertionError(f'Unexpected browser play config: {web}')
             script = server.request('GET', '/RetroBridge/Web/nostalgist.umd.js', raw=True)
             if hashlib.sha256(script).hexdigest() != '37ad8729399fa8164cf818932dc856c9cbcb243613866518d48020fe5025d9e1':
@@ -86,9 +86,21 @@ def main():
                 csp = page.headers['Content-Security-Policy']
             if "'wasm-unsafe-eval'" not in csp or "default-src 'none'" not in csp:
                 raise AssertionError('Play page CSP not widened for in-browser play: ' + csp)
+            core = server.request('GET', '/RetroBridge/Web/nova64_libretro.wasm', raw=True)
+            if hashlib.sha256(core).hexdigest() != '1eb08241dc31f0b50a551fe26bc1450d70d0e2fae168d8c52fb34b9be8aece4b':
+                raise AssertionError('Served Nova64 core differs from the pinned file')
             summary.update(files_downloaded_and_pinned=True, csp=csp)
 
-            games = {g['Platform']: g for g in server.request('GET', '/RetroBridge/Games', token=player)}
+            listed = server.request('GET', '/RetroBridge/Games', token=player)
+            demos = sorted(g['Title'] for g in listed if g['Platform'] == 'nova64')
+            if len(demos) != 8 or 'Hello 3D' not in demos:
+                raise AssertionError(f'Built-in Nova64 demos not listed: {demos}')
+            summary['nova64_demos'] = demos
+            games = {g['Platform']: g for g in listed}
+            if args.keep_seconds and not args.ios:
+                (workspace / 'session.json').write_text(json.dumps({'token': player, 'user': user['Id'], 'url': server.url, 'games': listed}))
+                print(f'Keeping the server up for {args.keep_seconds}s at {server.url}; session in {workspace / "session.json"}', flush=True)
+                time.sleep(args.keep_seconds)
             if args.ios:
                 helper = workspace / 'rb-session.html'
                 helper.write_text('<!doctype html><meta charset=utf-8><script>localStorage.setItem("jellyfin_credentials", JSON.stringify({Servers:[{AccessToken:'
@@ -131,7 +143,7 @@ def main():
         finally:
             smoke.docker('rm', '-f', container)
     (REPO / 'artifacts/browser-play-smoke.json').write_text(json.dumps(summary, indent=2) + '\n')
-    print('PASS: in-browser play files pinned and served, CSP widened only when enabled' + (', NES, Game Boy, GBA, and Genesis saves synced from iOS Safari' if args.ios else ''))
+    print('PASS: in-browser play files pinned and served, Nova64 demos listed, CSP widened only when enabled' + (', NES, Game Boy, GBA, and Genesis saves synced from iOS Safari' if args.ios else ''))
     print(json.dumps(summary.get('ios_safari', {})))
 
 

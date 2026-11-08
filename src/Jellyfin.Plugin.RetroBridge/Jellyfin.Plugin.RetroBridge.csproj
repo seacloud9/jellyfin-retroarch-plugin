@@ -8,5 +8,7 @@
     <EmbeddedResource Include="Configuration/configPage.html" />
     <EmbeddedResource Include="Configuration/playPage.html" />
     <EmbeddedResource Include="Configuration/menuPage.html" />
+    <!-- LogicalName keeps spaces in cart names, which become the game titles. -->
+    <EmbeddedResource Include="Demos/*.nova" LogicalName="Jellyfin.Plugin.RetroBridge.Demos.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
