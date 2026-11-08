@@ -361,6 +361,8 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     config_path = '/Plugins/' + PLUGIN_ID + '/Configuration'
     config = server.request('GET', config_path, token=admin)
     config['GameRoots'] = ['/games']
+    # Counts below are exact for the fixture; the built-in demos are covered by browser-play-smoke.py.
+    config['IncludeDemos'] = False
     server.request('POST', config_path, config, admin)
     scan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     if not scan['Published'] or scan['Count'] != 1:
