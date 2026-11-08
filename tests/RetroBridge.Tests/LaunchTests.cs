@@ -33,6 +33,7 @@ public sealed class LaunchTests
     [InlineData(".smd", "genesis")]
     [InlineData(".chd", "psx")]
     [InlineData(".pbp", "psx")]
+    [InlineData(".nova", "nova64")]
     [InlineData(".bin", null)] // ambiguous between Genesis and PlayStation
     [InlineData(".cue", null)] // a multi-file disc; use CHD or PBP
     [InlineData(".zip", null)]
@@ -46,7 +47,9 @@ public sealed class LaunchTests
         Assert.All(Platforms.All, x => Assert.Matches("^[a-z0-9]{1,16}$", x.Id)); // game IDs are "<platform>-<sha256>"
         Assert.All(extensions, x => Assert.Matches("^\\.[a-z0-9]{1,8}$", x));
         Assert.Equal(Platforms.Disc, Platforms.Get("psx")!.MaxContentBytes);
-        Assert.All(Platforms.All, x => Assert.False(string.IsNullOrEmpty(ArtworkMatcher.Systems[x.Id])));
+        // Every system has box art except Nova64, which libretro-thumbnails does not cover.
+        Assert.Equal(Platforms.All.Select(x => x.Id).Where(x => x != "nova64").Order(), ArtworkMatcher.Systems.Keys.Order());
+        Assert.All(ArtworkMatcher.Systems.Values, x => Assert.False(string.IsNullOrEmpty(x)));
     }
 
     [Theory]
@@ -54,6 +57,7 @@ public sealed class LaunchTests
     [InlineData("n64", ".z64")]
     [InlineData("genesis", ".md")]
     [InlineData("psx", ".chd")]
+    [InlineData("nova64", ".nova")]
     public void NewPlatformsGetIsolatedSaveDirectories(string platform, string extension)
     {
         var game = Game with { Id = platform + "-" + Game.Sha256, Platform = platform, Extension = extension };

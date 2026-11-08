@@ -8,7 +8,7 @@ public sealed record IndexedGame(Game Game, string Root, string RelativePath, lo
 public sealed record ScanIssue(string Path, string Message);
 public sealed record ScanResult(IReadOnlyList<IndexedGame> Games, IReadOnlyList<ScanIssue> Issues, int Hashed = 0, int Reused = 0);
 
-public sealed record PlatformInfo(string Id, string Name, string[] Extensions, long MaxContentBytes, string ArtworkSystem);
+public sealed record PlatformInfo(string Id, string Name, string[] Extensions, long MaxContentBytes, string? ArtworkSystem);
 
 // Every supported system. The companion, Android app, play page, and dashboard follow this list.
 public static class Platforms
@@ -28,6 +28,8 @@ public static class Platforms
         new("gba", "Game Boy Advance", [".gba"], Cartridge, "Nintendo - Game Boy Advance"),
         new("genesis", "Genesis / Mega Drive", [".md", ".gen", ".smd"], Cartridge, "Sega - Mega Drive - Genesis"),
         new("psx", "PlayStation", [".chd", ".pbp"], Disc, "Sony - PlayStation"),
+        // Nova64 fantasy console carts (zip packages). libretro-thumbnails has no Nova64 set, so there is no box art.
+        new("nova64", "Nova64", [".nova"], Cartridge, null),
     ];
 
     private static readonly Dictionary<string, PlatformInfo> ById = All.ToDictionary(x => x.Id, StringComparer.Ordinal);

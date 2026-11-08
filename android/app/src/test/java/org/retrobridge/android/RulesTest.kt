@@ -50,7 +50,7 @@ class RulesTest {
     }
 
     @Test fun platformTableMatchesTheServer() {
-        assertEquals(listOf("nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "psx"), Rules.systems.map { it.id })
+        assertEquals(listOf("nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "psx", "nova64"), Rules.systems.map { it.id })
         assertEquals("snes", Rules.platforms[".smc"])
         assertEquals("genesis", Rules.platforms[".gen"])
         assertNull(Rules.platforms[".bin"])

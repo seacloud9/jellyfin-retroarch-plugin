@@ -4,7 +4,7 @@ An early Jellyfin plugin and native RetroArch companion prototype, based on the 
 
 **Target: Jellyfin 12.1.0, .NET SDK 10.0.401. This is not a release-ready plugin.**
 
-The plugin provides an administrator dashboard for configuring game folders, scanning, searching, and filtering NES (`.nes`), SNES (`.sfc`, `.smc`), Nintendo 64 (`.z64`, `.n64`, `.v64`), Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), Genesis / Mega Drive (`.md`, `.gen`, `.smd`), and PlayStation (`.chd`, `.pbp`) content. Each game must be a single file: PlayStation `.cue`/`.bin` sets are not supported (convert them to CHD), and `.bin` is not used for Genesis because PlayStation shares it. Its authenticated API supplies games to a command-line companion, which verifies downloads, caches content, starts a locally selected RetroArch/core, and separates save directories by server, user, platform, and content checksum.
+The plugin provides an administrator dashboard for configuring game folders, scanning, searching, and filtering NES (`.nes`), SNES (`.sfc`, `.smc`), Nintendo 64 (`.z64`, `.n64`, `.v64`), Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), Genesis / Mega Drive (`.md`, `.gen`, `.smd`), PlayStation (`.chd`, `.pbp`), and Nova64 (`.nova`) content. Each game must be a single file: PlayStation `.cue`/`.bin` sets are not supported (convert them to CHD), and `.bin` is not used for Genesis because PlayStation shares it. Its authenticated API supplies games to a command-line companion, which verifies downloads, caches content, starts a locally selected RetroArch/core, and separates save directories by server, user, platform, and content checksum.
 
 ## Build and test
 
@@ -62,7 +62,7 @@ RetroBridge.Launcher register
 ```
 
 - **pair** uses Jellyfin Quick Connect (enable it under Dashboard → General). The companion prints a code. Sign in to Jellyfin as the player, open your profile → Quick Connect, and enter the code. No password is entered in the companion. The device-bound token is stored in `pairing.json` (owner-only on macOS/Linux). Revoke it under Dashboard → Devices.
-- **configure** records the RetroArch executable and a core per platform (`nes`, `snes`, `n64`, `gb`, `gbc`, `gba`, `genesis`, `psx`). Configure only the systems you play; `doctor` lists the rest. Suggested cores: Nestopia, Snes9x, Mupen64Plus-Next, Gambatte, mGBA, Genesis Plus GX, and PCSX ReARMed (which needs no BIOS file). Launch links can never choose programs or cores.
+- **configure** records the RetroArch executable and a core per platform (`nes`, `snes`, `n64`, `gb`, `gbc`, `gba`, `genesis`, `psx`, `nova64`). Configure only the systems you play; `doctor` lists the rest. Suggested cores: Nestopia, Snes9x, Mupen64Plus-Next, Gambatte, mGBA, Genesis Plus GX, and PCSX ReARMed (which needs no BIOS file). Launch links can never choose programs or cores.
 - **register** makes this companion the current user's `retrobridge://` handler: an applet in `~/Applications` (macOS), a `.desktop` entry plus `xdg-mime` (Linux), or `HKCU\Software\Classes` (Windows). `unregister` removes it.
 
 Data defaults to `~/Library/Application Support/RetroBridge`, `~/.local/share/RetroBridge`, or `%LOCALAPPDATA%\RetroBridge`. Pass `--data <dir>` to any command to change it.

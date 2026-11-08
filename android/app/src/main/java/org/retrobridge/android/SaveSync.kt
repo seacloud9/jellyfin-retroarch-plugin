@@ -19,6 +19,7 @@ object SaveSync {
         "vba_next" to "VBA Next", "vbam" to "VBA-M", "gpsp" to "gpSP",
         "genesis_plus_gx" to "Genesis Plus GX", "picodrive" to "PicoDrive", "clownmdemu" to "ClownMDEmu",
         "pcsx_rearmed" to "PCSX-ReARMed", "swanstation" to "SwanStation", "mednafen_psx_hw" to "Beetle PSX HW", "mednafen_psx" to "Beetle PSX",
+        "nova64" to "Nova64",
     )
 
     fun isSyncedName(gameId: String, name: String) = name.length <= 200 && extensions.any { name == gameId + it }

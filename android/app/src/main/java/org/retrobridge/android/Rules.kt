@@ -22,6 +22,8 @@ object Rules {
         GameSystem("genesis", listOf(".md", ".gen", ".smd"), CARTRIDGE, listOf("genesis_plus_gx", "picodrive", "clownmdemu")),
         // PCSX ReARMed runs without a BIOS file; the others need one in RetroArch's system folder.
         GameSystem("psx", listOf(".chd", ".pbp"), DISC, listOf("pcsx_rearmed", "swanstation", "mednafen_psx_hw", "mednafen_psx")),
+        // Not in RetroArch's core downloader: sideload nova64_libretro_android.so from the Nova64 releases.
+        GameSystem("nova64", listOf(".nova"), CARTRIDGE, listOf("nova64")),
     )
     private val byId = systems.associateBy { it.id }
     val platforms = systems.flatMap { s -> s.extensions.map { it to s.id } }.toMap()

@@ -21,7 +21,7 @@ Findings recorded on October 21, 2026. Environment: iPhone 17 Pro simulator (iOS
 - **Save protection:** before each launch, every RetroArch save named after the game ID is copied to `/sdcard/RetroBridge/backups/<game id>/` (last 5 kept). A save found empty is restored from the newest non-empty backup.
 - **Play page:** on Android, Play opens the link even when no computer is listening. iOS still needs a listening computer.
 
-Setup on a phone: install RetroArch, open it once, install the cores (NES: Nestopia; SNES: Snes9x; N64: Mupen64Plus-Next; GB/GBC: Gambatte; GBA: mGBA; Genesis: Genesis Plus GX; PlayStation: PCSX ReARMed) from its Online Updater, install the RetroBridge APK, allow **All files access**, then pair.
+Setup on a phone: install RetroArch, open it once, install the cores (NES: Nestopia; SNES: Snes9x; N64: Mupen64Plus-Next; GB/GBC: Gambatte; GBA: mGBA; Genesis: Genesis Plus GX; PlayStation: PCSX ReARMed) from its Online Updater (Nova64 is not in the Online Updater: download `nova64_libretro_android_arm64-v8a.so` from the [Nova64 releases](https://github.com/seacloud9/nova64/releases), rename it to `nova64_libretro_android.so`, and put it in RetroArch's cores folder), install the RetroBridge APK, allow **All files access**, then pair.
 
 ### Verified on the Android 17 emulator (arm64, 16 KB pages)
 
