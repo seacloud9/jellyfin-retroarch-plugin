@@ -56,7 +56,7 @@
 </style>
 </head><body><main>
   <h1>RetroBridge</h1>
-  <p class="muted">Play NES, SNES, Nintendo 64, Game Boy, Genesis, and PlayStation games in RetroArch on a paired computer, or right here in your browser.</p>
+  <p class="muted">Play NES, SNES, Nintendo 64, Game Boy, Genesis, PlayStation, and Nova64 games in RetroArch on a paired computer, or right here in your browser.</p>
   <div id="setup" class="notice" hidden></div>
   <div id="library" hidden>
     <div class="bar">
@@ -67,7 +67,7 @@
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="games"></ul>
   </div>
-<p class="muted" id="third-party" hidden>In-browser play uses open-source emulators: RetroArch (GPL-3.0), FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), PCSX ReARMed (GPL-2.0-or-later), and Nostalgist (MIT). <a href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" target="_blank" rel="noopener">Licenses and source code</a>.</p>
+<p class="muted" id="third-party" hidden>In-browser play uses open-source emulators: RetroArch (GPL-3.0), FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), PCSX ReARMed (GPL-2.0-or-later), Nova64 (MIT), and Nostalgist (MIT). <a href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" target="_blank" rel="noopener">Licenses and source code</a>.</p>
 <details class="diagnostics" id="diagnostics">
   <summary>Diagnostics</summary>
   <p>Share this report if something does not work. It contains no passwords or tokens.</p>
@@ -90,7 +90,7 @@
 (function () {
   var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {}, MaxBytes: Infinity };
   // Same list as RetroBridge.Domain.Platforms.
-  var PLATFORMS = { nes: 'NES', snes: 'SNES', n64: 'Nintendo 64', gb: 'Game Boy', gbc: 'Game Boy Color', gba: 'Game Boy Advance', genesis: 'Genesis / Mega Drive', psx: 'PlayStation' };
+  var PLATFORMS = { nes: 'NES', snes: 'SNES', n64: 'Nintendo 64', gb: 'Game Boy', gbc: 'Game Boy Color', gba: 'Game Boy Advance', genesis: 'Genesis / Mega Drive', psx: 'PlayStation', nova64: 'Nova64' };
   // Touch buttons per system: [RetroArch button, label]. Shoulder buttons go on the top row.
   var FACE = { snes: [['y', 'Y'], ['x', 'X'], ['b', 'B'], ['a', 'A']], genesis: [['y', 'A'], ['b', 'B'], ['a', 'C']],
     psx: [['y', '□'], ['x', '△'], ['b', '✕'], ['a', '○']] };
@@ -245,8 +245,11 @@
   // Nostalgist only knows the save folder of cores in its own list. For others, RetroArch saves under the core's
   // display name, so the battery save is placed and read there directly.
   var SAVE_FOLDERS = { clownmdemu: 'ClownMDEmu' }, SAVES = '/home/web_user/retroarch/userdata/saves/';
+  // Cores without battery saves; asking them for one would wait for a file that never appears.
+  var NO_SAVES = { nova64: true };
   function savePath(game) { return SAVES + SAVE_FOLDERS[web.Cores[game.Platform]] + '/' + game.Id + '.srm'; }
   async function readSave(game) {
+    if (NO_SAVES[web.Cores[game.Platform]]) return new Uint8Array(0);
     if (!SAVE_FOLDERS[web.Cores[game.Platform]]) return new Uint8Array(await (await emulator.saveSRAM()).arrayBuffer());
     var fs = emulator.getEmscriptenFS(), path = savePath(game), last = -1;
     try { fs.unlink(path); } catch (_) {}
@@ -288,7 +291,7 @@
       playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
       window.__browserPlay = { booted: true, revision: revision };
       diag.browser = game.Title + ' on ' + core + ' · booted · server save revision ' + revision;
-      playerStatus((server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.') +
+      playerStatus((NO_SAVES[core] ? 'Playing. This system has no saves to sync.' : server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.') +
         // Opening from a link is not a tap, so iOS keeps audio off until the first touch.
         (fromLink && ios ? ' Tap the screen once to turn on sound.' : ''));
       keepAwake();

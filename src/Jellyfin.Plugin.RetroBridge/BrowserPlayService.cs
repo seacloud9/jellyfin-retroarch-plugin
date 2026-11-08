@@ -8,7 +8,8 @@ public sealed record BrowserAsset(string Url, string Sha256, string[] Files);
 // Experimental in-browser play. When an administrator enables it, the server downloads pinned, checksum-verified
 // emulator files from their upstream projects and serves them to players. Nothing third-party ships in the plugin,
 // and players never contact a CDN. Licenses: Nostalgist (MIT); RetroArch Emscripten builds (GPL-3.0) of
-// FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), and PCSX ReARMed (GPL-2.0-or-later).
+// FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), and PCSX ReARMed (GPL-2.0-or-later); and Nova64 (MIT)
+// linked into RetroArch 1.21.0's Emscripten build (GPL-3.0).
 // See docs/third-party.md.
 public sealed class BrowserPlayService
 {
@@ -27,6 +28,11 @@ public sealed class BrowserPlayService
             "a26892a765a1b0effad2591d1927db9431ea2d125f88bc231685d84681e22700", ["clownmdemu_libretro.js", "clownmdemu_libretro.wasm"]),
         new("https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/pcsx_rearmed_libretro.zip",
             "4c058822c08d38df709e8a03a0e3a4209d178bada0478996a46d2cf058d6a530", ["pcsx_rearmed_libretro.js", "pcsx_rearmed_libretro.wasm"]),
+        // Nova64 publishes its web core in the repository, not as release assets; pinned to the v0.5.7 tag.
+        new("https://cdn.jsdelivr.net/gh/seacloud9/nova64@v0.5.7/public/retroarch-web/nova64_libretro.js",
+            "71b7389459862cef87e7fad6e2677760b481cd8ff4b0117e06d7deede69bd48e", ["nova64_libretro.js"]),
+        new("https://cdn.jsdelivr.net/gh/seacloud9/nova64@v0.5.7/public/retroarch-web/nova64_libretro.wasm",
+            "1eb08241dc31f0b50a551fe26bc1450d70d0e2fae168d8c52fb34b9be8aece4b", ["nova64_libretro.wasm"]),
     ];
 
     // Each browser core is linked with GPL-3.0 RetroArch, so its license must be GPL-3.0-compatible:
@@ -35,7 +41,13 @@ public sealed class BrowserPlayService
     // Nintendo 64 core. SNES and N64 therefore play natively only.
     public static readonly IReadOnlyDictionary<string, string> PinnedCores = new Dictionary<string, string>
     {
-        ["nes"] = "fceumm", ["gb"] = "mgba", ["gbc"] = "mgba", ["gba"] = "mgba", ["genesis"] = "clownmdemu", ["psx"] = "pcsx_rearmed",
+        ["nes"] = "fceumm",
+        ["gb"] = "mgba",
+        ["gbc"] = "mgba",
+        ["gba"] = "mgba",
+        ["genesis"] = "clownmdemu",
+        ["psx"] = "pcsx_rearmed",
+        ["nova64"] = "nova64",
     };
 
     // The whole game is loaded into the page's memory, so very large discs are left to native play.

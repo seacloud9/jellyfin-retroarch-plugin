@@ -23,7 +23,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Experimental in-browser play (WASM). Off by default; platforms limit which games offer it.
     public bool BrowserPlay { get; set; }
-    public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc", "gba", "genesis"];
+    public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc", "gba", "genesis", "nova64"];
 }
 
 public sealed class GameAccess

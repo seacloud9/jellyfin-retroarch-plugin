@@ -5,6 +5,7 @@ Each release's section becomes "What's new" in its GitHub release notes and the 
 ## [Unreleased]
 - **New systems:** SNES, Nintendo 64, Game Boy Advance, Genesis / Mega Drive, and PlayStation (CHD or PBP discs up to 2 GiB) in the catalog, the desktop companion, and the Android app. The Android app picks the best installed core for each system.
 - **In-browser play** adds Game Boy Advance (mGBA), Genesis / Mega Drive (ClownMDEmu), and PlayStation (PCSX ReARMed, off by default, discs up to 512 MiB), with touch buttons that match each system. SNES and Nintendo 64 stay native only: no browser core for them has a license that allows serving it. Administrators press **Download emulator files** again to add the new cores; systems already downloaded keep working meanwhile.
+- **Nova64** (`.nova` carts) in the catalog, the desktop companion, the Android app, and in-browser play. The server downloads Nova64's own WebAssembly core (pinned to Nova64 v0.5.7); press **Download emulator files** again to add it. Nova64 carts have no battery saves, so nothing is synced for them.
 - `RetroBridge.Launcher doctor` checks only the systems you configured and lists the others.
 
 ## [0.2.1] - 2026-10-22
