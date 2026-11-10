@@ -55,6 +55,9 @@ def main():
     with zipfile.ZipFile(plugin_zip, 'w', zipfile.ZIP_DEFLATED) as z:
         for name in ('Jellyfin.Plugin.RetroBridge.dll', 'RetroBridge.Domain.dll'):
             z.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), (plugin_dir / name).read_bytes())
+        # The DLL embeds the Nova64 web core (GPL-3.0 RetroArch, MIT Nova64) and Nostalgist (MIT); their notices ship alongside.
+        for path in sorted((REPO / 'src/Jellyfin.Plugin.RetroBridge/Web').glob('LICENSE-*.txt')):
+            z.writestr(zipfile.ZipInfo('licenses/' + path.name, date_time=(2026, 1, 1, 0, 0, 0)), path.read_bytes())
         z.writestr(zipfile.ZipInfo('meta.json', date_time=(2026, 1, 1, 0, 0, 0)), json.dumps(meta, indent=2))
 
     # Jellyfin verifies repository downloads with MD5.

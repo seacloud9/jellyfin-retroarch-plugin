@@ -25,9 +25,23 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton(provider => new DemoLibrary(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "demos")));
         services.AddSingleton(provider => new SaveStore(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "saves")));
         services.AddSingleton<IPairedDevices, JellyfinPairedDevices>();
+        services.AddHostedService<StartupScan>();
         services.AddSingleton<Func<PluginConfiguration>>(() => Plugin.Instance!.Configuration);
         services.AddSingleton<Action<PluginConfiguration>>(configuration => Plugin.Instance!.UpdateConfiguration(configuration));
     }
+}
+
+// Indexes the built-in demos (and any game folders) when the server starts, so players see games right after install
+// without waiting for an administrator or the nightly scan. Unchanged files are not rehashed.
+public sealed class StartupScan(CatalogService catalog, DemoLibrary demos) : Microsoft.Extensions.Hosting.IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration is { } configuration) catalog.TryStartBackground(demos.Roots(configuration), false);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record ScanStatus(bool Running, int Processed, ScanResult? Last, DateTimeOffset? LastCompleted);

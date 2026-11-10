@@ -30,15 +30,14 @@ public sealed class DemoLibraryTests : IDisposable
     }
 
     [Fact]
-    public void RootsAndAccessFollowTheSetting()
+    public void DemosAreAlwaysScannedAlongsideGameFolders()
     {
+        Assert.Equal([_demos.Directory], _demos.Roots(new PluginConfiguration()));
         var configuration = new PluginConfiguration { GameRoots = ["/games"] };
         Assert.Equal(["/games", _demos.Directory], _demos.Roots(configuration));
         Assert.True(_demos.Allows(configuration, _demos.Directory));
-        configuration.IncludeDemos = false;
-        Assert.Equal(["/games"], _demos.Roots(configuration));
-        Assert.False(_demos.Allows(configuration, _demos.Directory));
         Assert.True(_demos.Allows(configuration, Path.GetFullPath("/games")));
+        Assert.False(_demos.Allows(configuration, Path.GetFullPath("/elsewhere")));
     }
 
     public void Dispose() { if (Directory.Exists(_demos.Directory)) Directory.Delete(_demos.Directory, true); }

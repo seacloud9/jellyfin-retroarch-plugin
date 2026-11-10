@@ -1,7 +1,8 @@
 namespace Jellyfin.Plugin.RetroBridge;
 
 // Nova64 demo carts (MIT, from seacloud9/nova64 tag v0.5.7) built into the plugin. They are written to a folder in
-// the server's data directory, which is scanned like a game folder while PluginConfiguration.IncludeDemos is on.
+// the server's data directory, which is always scanned alongside the administrator's game folders. They are part of
+// every installation on purpose: players always have games that work, and the game folders only add more.
 public sealed class DemoLibrary
 {
     private const string Prefix = "Jellyfin.Plugin.RetroBridge.Demos.";
@@ -35,10 +36,9 @@ public sealed class DemoLibrary
             File.Delete(stale);
     }
 
-    // Folders to scan: the administrator's game folders, plus the demos when they are included.
+    // Folders to scan: the administrator's game folders, plus the demos.
     public string[] Roots(PluginConfiguration configuration)
     {
-        if (!configuration.IncludeDemos) return [.. configuration.GameRoots];
         // A failed install leaves the folder as it was; the scan then reports it like any unreadable folder.
         try { Install(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
@@ -47,5 +47,5 @@ public sealed class DemoLibrary
 
     // Whether games under this indexed root may still be served with the current settings.
     public bool Allows(PluginConfiguration configuration, string root) =>
-        configuration.GameRoots.Any(x => Path.GetFullPath(x) == root) || (configuration.IncludeDemos && root == Directory);
+        configuration.GameRoots.Any(x => Path.GetFullPath(x) == root) || root == Directory;
 }

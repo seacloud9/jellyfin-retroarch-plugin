@@ -1,5 +1,5 @@
 // Drives the real /RetroBridge/Play page from a live server in jsdom with a player's Jellyfin session.
-// Usage: node play-page.js <server-url> <user-id> [--mobile]   (access token in RETROBRIDGE_TOKEN)
+// Usage: node play-page.js <server-url> <user-id> [--mobile]   (access token in RETROBRIDGE_TOKEN; game title in RETROBRIDGE_GAME)
 const { JSDOM, VirtualConsole, ResourceLoader } = require('jsdom');
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1';
 
@@ -31,7 +31,10 @@ async function main() {
     for (let i = 0; i < 100; i++) { const value = check(); if (value) return value; await new Promise(r => setTimeout(r, 100)); }
     throw new Error('Timed out waiting for ' + what + '; page says: ' + document.body.textContent.replace(/\s+/g, ' ').slice(0, 300));
   };
-  const button = await until(() => document.querySelector('button.play'), 'a Play button');
+  // RETROBRIDGE_GAME picks a title; the built-in demos are listed too, so the first button may be a demo.
+  const wanted = process.env.RETROBRIDGE_GAME;
+  const button = await until(() => [...document.querySelectorAll('#games li')]
+    .find(li => !wanted || li.querySelector('span')?.firstChild.textContent === wanted)?.querySelector('button.play'), 'a Play button');
   const devices = [...document.querySelectorAll('#device option')].map(o => o.value);
   const games = [...document.querySelectorAll('#games li span')].map(s => s.firstChild.textContent);
   button.click();

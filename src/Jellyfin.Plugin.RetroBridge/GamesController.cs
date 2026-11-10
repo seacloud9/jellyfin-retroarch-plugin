@@ -173,7 +173,7 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         var stream = typeof(GamesController).Assembly.GetManifestResourceStream("Jellyfin.Plugin.RetroBridge.Configuration.playPage.html")!;
         // In-browser play needs the emulator script from this server, blob: module imports of the core, and WebAssembly compilation.
-        var scripts = configuration().BrowserPlay ? "'unsafe-inline' 'self' blob: 'wasm-unsafe-eval'" : "'unsafe-inline'";
+        var scripts = configuration().BrowserPlay || browser.BundledPlatforms.Length > 0 ? "'unsafe-inline' 'self' blob: 'wasm-unsafe-eval'" : "'unsafe-inline'";
         Response.Headers.ContentSecurityPolicy = $"default-src 'none'; script-src {scripts}; style-src 'unsafe-inline'; connect-src 'self' blob:; img-src blob:; frame-ancestors 'none'";
         Response.Headers.CacheControl = "no-store";
         return File(stream, "text/html; charset=utf-8");
@@ -192,12 +192,14 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
     {
         if (!CanPlay()) return Forbid();
         var config = configuration();
-        string[] platforms = config.BrowserPlay
-            ? [.. config.BrowserPlatforms.Distinct().Where(p => browser.Cores.TryGetValue(p, out var core) && browser.CoreReady(core))]
+        // Bundled cores (Nova64) are always offered; the setting controls the downloaded ones.
+        string[] chosen = config.BrowserPlay
+            ? [.. config.BrowserPlatforms.Where(p => browser.Cores.TryGetValue(p, out var core) && browser.CoreReady(core))]
             : [];
+        string[] platforms = [.. chosen.Concat(browser.BundledPlatforms).Distinct()];
         return Ok(new
         {
-            Enabled = config.BrowserPlay && platforms.Length > 0,
+            Enabled = platforms.Length > 0,
             Platforms = platforms,
             Cores = browser.Cores,
             MaxBytes = BrowserPlayService.MaxGameBytes,
@@ -215,12 +217,13 @@ public sealed class GamesController(CatalogService catalog, LaunchTickets ticket
         return Ok(new { browser.Ready });
     }
 
-    // Open-source emulator files, served only while in-browser play is enabled. Pinned content, so cacheable.
+    // Open-source emulator files. Bundled ones are always served; downloaded ones only while in-browser play is enabled.
+    // Pinned content, so cacheable.
     [HttpGet("Web/{file}")]
     [AllowAnonymous]
     public IActionResult BrowserFile(string file)
     {
-        if (!configuration().BrowserPlay || browser.Open(file) is not { } asset) return NotFound();
+        if (!(configuration().BrowserPlay || BrowserPlayService.ServesAlways(file)) || browser.Open(file) is not { } asset) return NotFound();
         Response.Headers.CacheControl = "public, max-age=86400";
         return File(asset.File, asset.ContentType);
     }

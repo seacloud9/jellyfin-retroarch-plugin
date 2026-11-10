@@ -84,6 +84,23 @@ public sealed class BrowserPlayTests : IDisposable
         Assert.False(service.CoreReady("core")); // the shared emulator script is required too
     }
 
+    [Fact]
+    public void NovaCoreShipsWithThePluginAndMatchesItsPins()
+    {
+        // No download handler: any network use would fail.
+        var service = new BrowserPlayService(_directory, new FakeUpstream());
+        Assert.Equal(["nova64"], service.BundledPlatforms);
+        Assert.True(service.CoreReady("nova64"));
+        Assert.False(service.CoreReady("fceumm"));
+        foreach (var asset in BrowserPlayService.Assets.Where(a => a.Files.All(BrowserPlayService.Bundled.Contains)))
+        {
+            using var stream = service.Open(asset.Files[0])!.Value.File;
+            Assert.Equal(asset.Sha256, Convert.ToHexStringLower(SHA256.HashData(stream)));
+        }
+        Assert.Equal(new[] { "nostalgist.umd.js", "nova64_libretro.js", "nova64_libretro.wasm" }, BrowserPlayService.Bundled.Order().ToArray());
+        Assert.False(Directory.Exists(_directory)); // nothing written until an administrator downloads the other cores
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, true);

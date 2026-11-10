@@ -3,6 +3,9 @@
 Each release's section becomes "What's new" in its GitHub release notes and the changelog in Jellyfin's plugin catalog. `scripts/build-release.py` requires a section for the version being released.
 
 ## [Unreleased]
+- **Requires Jellyfin 12.4.** Built and tested against Jellyfin 12.4.0 (was 12.1.0).
+- **The built-in Nova64 demos are always included and play with no setup.** Every installation lists the eight demo games from the first start, before any scan, and they play in the browser right away: the Nova64 core and its loader now ship inside the plugin (the zip grows by about 2 MB), so nothing has to be enabled or downloaded. Game folders add your own games alongside them. The *Include the built-in Nova64 demo games* setting is gone, and Nova64 no longer appears in the in-browser play platform list because it is always on.
+- In-browser play for the other systems is unchanged: still off by default, and still downloaded with **Download emulator files** (now about 12 MB).
 
 ## [0.3.0] - 2026-11-07
 - **New systems:** SNES, Nintendo 64, Game Boy Advance, Genesis / Mega Drive, and PlayStation (CHD or PBP discs up to 2 GiB) in the catalog, the desktop companion, and the Android app. The Android app picks the best installed core for each system.

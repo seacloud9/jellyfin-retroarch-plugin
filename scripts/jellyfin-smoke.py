@@ -128,11 +128,11 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
     if not (browser / 'node_modules/jsdom').is_dir():
         raise RuntimeError('Run npm ci in tests/browser first')
     page = subprocess.run(['node', str(browser / 'play-page.js'), server.url, user_id], capture_output=True, text=True, timeout=60,
-                          env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary})
+                          env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary, 'RETROBRIDGE_GAME': 'save-counter'})
     if page.returncode:
         raise AssertionError('Play page failed: ' + page.stderr.strip()[-300:])
     clicked = json.loads(page.stdout)
-    if clicked['devices'] != [device] or clicked['games'] != ['save-counter'] or clicked['errors']:
+    if clicked['devices'] != [device] or 'save-counter' not in clicked['games'] or len(clicked['games']) != 9 or clicked['errors']:
         raise AssertionError(f'Unexpected play page state: {clicked}')
     log = data / 'launcher.log'
     if os_handler is True:
@@ -161,7 +161,7 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
 
     def play_page(*flags):
         result = subprocess.run(['node', str(browser / 'play-page.js'), server.url, user_id, *flags], capture_output=True, text=True,
-                                timeout=60, env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary})
+                                timeout=60, env={**os.environ, 'RETROBRIDGE_TOKEN': ordinary, 'RETROBRIDGE_GAME': 'save-counter'})
         if result.returncode:
             raise AssertionError('Play page failed: ' + result.stderr.strip()[-300:])
         return json.loads(result.stdout)
@@ -268,7 +268,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
         server.request('POST', '/System/Configuration', system, admin)
     config['PlayerUserIds'] = [user_id]
     server.request('POST', config_path, config, admin)
-    if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 1:
+    if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 9:  # fixture plus built-in demos
         raise AssertionError('Allowed player cannot list games')
     server.request('POST', '/RetroBridge/Scan', token=ordinary, expected=(403,))
 
@@ -322,12 +322,12 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
         # Per-game access: limit the game to someone else, then restore it.
         someone = server.request('POST', '/Users/New', {'Name': 'retrobridge-other', 'Password': secrets.token_urlsafe(24)}, admin)['Id']
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Access', {'PlayerUserIds': [someone]}, admin)
-        if server.request('GET', '/RetroBridge/Games', token=ordinary):
+        if any(g['Id'] == game['Id'] for g in server.request('GET', '/RetroBridge/Games', token=ordinary)):
             raise AssertionError('Restricted game still listed for another player')
         server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(404,))
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(404,))
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Access', {'PlayerUserIds': []}, admin)
-        if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 1:
+        if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 9:
             raise AssertionError('Game not restored after clearing its restriction')
         summary['per_game_access'] = True
         config = server.request('GET', config_path, token=admin)
@@ -358,14 +358,23 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     if b'GameRoots' not in page or b'RetroBridge/Games' not in page:
         raise AssertionError('Embedded configuration page is missing')
 
+    # The built-in demos are indexed at startup, before any administrator scan or configuration.
+    deadline = time.time() + 30
+    while len([g for g in server.request('GET', '/RetroBridge/Games?platform=nova64', token=admin)]) != 8:
+        if time.time() > deadline:
+            raise AssertionError('Built-in Nova64 demos were not listed after startup')
+        time.sleep(0.5)
+    summary['demos_listed_at_startup'] = True
+
     config_path = '/Plugins/' + PLUGIN_ID + '/Configuration'
     config = server.request('GET', config_path, token=admin)
+    if 'IncludeDemos' in config:
+        raise AssertionError('The demos must not be optional')
     config['GameRoots'] = ['/games']
-    # Counts below are exact for the fixture; the built-in demos are covered by browser-play-smoke.py.
-    config['IncludeDemos'] = False
     server.request('POST', config_path, config, admin)
     scan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
-    if not scan['Published'] or scan['Count'] != 1:
+    # The fixture game plus the eight built-in demos.
+    if not scan['Published'] or scan['Count'] != 9:
         raise AssertionError('Fixture scan failed')
     games = server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin)
     if len(games) != 1:
@@ -389,12 +398,12 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
         raise AssertionError(f'Launcher-style authorization rejected: {error.code}') from None
     summary['launcher_token_header'] = True
     rescan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
-    if server.request('GET', '/RetroBridge/Games', token=admin) != games:
+    if server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin) != games:
         raise AssertionError('Rescan changed identity or duplicated content')
-    if (rescan['Hashed'], rescan['Reused']) != (0, 1):
+    if (rescan['Hashed'], rescan['Reused']) != (0, 9):
         raise AssertionError(f'Unchanged rescan should reuse the hash: {rescan}')
     full = server.request('POST', '/RetroBridge/Scan?full=true&wait=true', token=admin)
-    if (full['Hashed'], full['Reused']) != (1, 0):
+    if (full['Hashed'], full['Reused']) != (9, 0):
         raise AssertionError(f'Full rescan should rehash: {full}')
     summary['incremental_scan'] = True
 
@@ -407,7 +416,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
             raise AssertionError(f'Background scan did not finish: {status}')
         time.sleep(0.5)
         status = server.request('GET', '/RetroBridge/Scan', token=admin)
-    if not status['Last']['Published'] or status['Last']['Count'] != 1:
+    if not status['Last']['Published'] or status['Last']['Count'] != 9:
         raise AssertionError(f'Background scan result: {status}')
     server.request('GET', '/RetroBridge/Scan', expected=(401,))
     summary['background_scan'] = True
@@ -470,12 +479,12 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     if server.request('GET', config_path, token=admin)['GameRoots'] != ['/games']:
         raise AssertionError('Plugin configuration did not survive restart')
     # Compare everything except the overridden title.
-    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games', token=admin)] != [dict(g, Title=None) for g in games]:
+    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games?platform=nes', token=admin)] != [dict(g, Title=None) for g in games]:
         raise AssertionError('Catalog was not restored from its snapshot after restart')
     summary['catalog_persisted_across_restart'] = True
     after_restart = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     # Compare everything except the overridden title.
-    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games', token=admin)] != [dict(g, Title=None) for g in games]:
+    if [dict(g, Title=None) for g in server.request('GET', '/RetroBridge/Games?platform=nes', token=admin)] != [dict(g, Title=None) for g in games]:
         raise AssertionError('Content identity did not survive restart and rescan')
     if after_restart['Hashed'] != 0:
         raise AssertionError(f'First scan after restart should be incremental: {after_restart}')

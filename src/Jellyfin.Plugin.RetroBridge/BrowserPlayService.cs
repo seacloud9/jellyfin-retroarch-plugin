@@ -5,9 +5,9 @@ namespace Jellyfin.Plugin.RetroBridge;
 
 public sealed record BrowserAsset(string Url, string Sha256, string[] Files);
 
-// Experimental in-browser play. When an administrator enables it, the server downloads pinned, checksum-verified
-// emulator files from their upstream projects and serves them to players. Nothing third-party ships in the plugin,
-// and players never contact a CDN. Licenses: Nostalgist (MIT); RetroArch Emscripten builds (GPL-3.0) of
+// In-browser play. The Nova64 core and the Nostalgist loader ship inside the plugin, so the built-in Nova64 demos
+// play with no setup. For the other systems, an administrator enables in-browser play and the server downloads
+// pinned, checksum-verified emulator files from their upstream projects. Players never contact a CDN. Licenses: Nostalgist (MIT); RetroArch Emscripten builds (GPL-3.0) of
 // FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), and PCSX ReARMed (GPL-2.0-or-later); and Nova64 (MIT)
 // linked into RetroArch 1.21.0's Emscripten build (GPL-3.0).
 // See docs/third-party.md.
@@ -29,6 +29,7 @@ public sealed class BrowserPlayService
         new("https://cdn.jsdelivr.net/gh/arianrhodsandlot/retroarch-emscripten-build@v1.22.2/retroarch/pcsx_rearmed_libretro.zip",
             "4c058822c08d38df709e8a03a0e3a4209d178bada0478996a46d2cf058d6a530", ["pcsx_rearmed_libretro.js", "pcsx_rearmed_libretro.wasm"]),
         // Nova64 publishes its web core in the repository, not as release assets; pinned to the v0.5.7 tag.
+        // These two and Nostalgist are bundled in Web/; the entries keep their provenance and are never downloaded.
         new("https://cdn.jsdelivr.net/gh/seacloud9/nova64@v0.5.7/public/retroarch-web/nova64_libretro.js",
             "71b7389459862cef87e7fad6e2677760b481cd8ff4b0117e06d7deede69bd48e", ["nova64_libretro.js"]),
         new("https://cdn.jsdelivr.net/gh/seacloud9/nova64@v0.5.7/public/retroarch-web/nova64_libretro.wasm",
@@ -53,6 +54,14 @@ public sealed class BrowserPlayService
     // The whole game is loaded into the page's memory, so very large discs are left to native play.
     public const long MaxGameBytes = 512L * 1024 * 1024;
 
+    // Files embedded in the plugin (Web/*.js, Web/*.wasm), identical to their pinned upstream files.
+    private const string BundledPrefix = "Jellyfin.Plugin.RetroBridge.Web.";
+    public const string LoaderScript = "nostalgist.umd.js";
+    public static IReadOnlySet<string> Bundled { get; } = typeof(BrowserPlayService).Assembly.GetManifestResourceNames()
+        .Where(x => x.StartsWith(BundledPrefix, StringComparison.Ordinal)).Select(x => x[BundledPrefix.Length..])
+        .Where(x => x.EndsWith(".js", StringComparison.Ordinal) || x.EndsWith(".wasm", StringComparison.Ordinal))
+        .ToHashSet(StringComparer.Ordinal);
+
     private readonly BrowserAsset[] _assets;
     private readonly HashSet<string> _served;
     private readonly string _directory;
@@ -75,16 +84,26 @@ public sealed class BrowserPlayService
 
     public bool Ready => _served.All(Present);
 
+    // A core that ships with the plugin works without downloads and regardless of the in-browser play setting.
+    public static bool IsBundled(string core) =>
+        Bundled.Contains(core + "_libretro.js") && Bundled.Contains(core + "_libretro.wasm") && Bundled.Contains(LoaderScript);
+
+    // Platforms that are always playable in the browser because their core is bundled.
+    public string[] BundledPlatforms => [.. Cores.Where(x => IsBundled(x.Value)).Select(x => x.Key).Order(StringComparer.Ordinal)];
+
+    // Whether this file is served even while in-browser play is off.
+    public static bool ServesAlways(string name) => Bundled.Contains(name);
+
     // A core is usable once the shared script and its own files are here. After an upgrade adds cores, the
     // systems that were already downloaded keep working until an administrator downloads the new ones.
     public bool CoreReady(string core)
     {
         string[] own = [core + "_libretro.js", core + "_libretro.wasm"];
         var shared = _served.Where(name => !name.Contains("_libretro.", StringComparison.Ordinal));
-        return own.All(name => _served.Contains(name) && Present(name)) && shared.All(Present);
+        return IsBundled(core) || (own.All(name => _served.Contains(name) && Present(name)) && shared.All(Present));
     }
 
-    private bool Present(string name) => File.Exists(Path.Combine(_directory, name));
+    private bool Present(string name) => Bundled.Contains(name) || File.Exists(Path.Combine(_directory, name));
 
     // Downloads anything missing. Each download must match its pinned SHA-256 before any file is written.
     public async Task PrepareAsync(CancellationToken cancellationToken)
@@ -93,7 +112,7 @@ public sealed class BrowserPlayService
         try
         {
             Directory.CreateDirectory(_directory);
-            foreach (var asset in _assets.Where(a => a.Files.Any(f => !File.Exists(Path.Combine(_directory, f)))))
+            foreach (var asset in _assets.Where(a => a.Files.Any(f => !Present(f))))
             {
                 var data = await DownloadAsync(asset.Url, cancellationToken);
                 if (Convert.ToHexStringLower(SHA256.HashData(data)) != asset.Sha256)
@@ -119,10 +138,12 @@ public sealed class BrowserPlayService
 
     public (Stream File, string ContentType)? Open(string name)
     {
+        var type = name.EndsWith(".wasm", StringComparison.Ordinal) ? "application/wasm" : "text/javascript";
+        if (Bundled.Contains(name)) return (typeof(BrowserPlayService).Assembly.GetManifestResourceStream(BundledPrefix + name)!, type);
         if (!_served.Contains(name)) return null;
         var path = Path.Combine(_directory, name);
         if (!File.Exists(path)) return null;
-        return (File.OpenRead(path), name.EndsWith(".wasm", StringComparison.Ordinal) ? "application/wasm" : "text/javascript");
+        return (File.OpenRead(path), type);
     }
 
     private async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)

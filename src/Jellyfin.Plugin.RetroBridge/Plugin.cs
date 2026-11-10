@@ -21,12 +21,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Games limited to specific players. Games without an entry are available to every player.
     public GameAccess[] RestrictedGames { get; set; } = [];
 
-    // Experimental in-browser play (WASM). Off by default; platforms limit which games offer it.
+    // Experimental in-browser play (WASM) for downloaded cores. Off by default; platforms limit which games offer it.
+    // Nova64 is not listed: its core ships with the plugin and always plays in the browser.
     public bool BrowserPlay { get; set; }
-    public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc", "gba", "genesis", "nova64"];
-
-    // List the Nova64 demo carts built into the plugin alongside the game folders.
-    public bool IncludeDemos { get; set; } = true;
+    public string[] BrowserPlatforms { get; set; } = ["nes", "gb", "gbc", "gba", "genesis"];
 }
 
 public sealed class GameAccess

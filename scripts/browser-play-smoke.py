@@ -68,7 +68,14 @@ def main():
             server.request('POST', config_path, config, admin)
             server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
             player = server.login('player', player_password)
-            server.request('GET', '/RetroBridge/Web/nostalgist.umd.js', expected=(404,))
+            # Nova64 ships with the plugin: playable in the browser before in-browser play is enabled or anything is downloaded.
+            web = server.request('GET', '/RetroBridge/Web/Config', token=player)
+            if not web['Enabled'] or web['Platforms'] != ['nova64']:
+                raise AssertionError(f'Bundled Nova64 not offered by default: {web}')
+            bundled = server.request('GET', '/RetroBridge/Web/nova64_libretro.wasm', raw=True)
+            if hashlib.sha256(bundled).hexdigest() != '1eb08241dc31f0b50a551fe26bc1450d70d0e2fae168d8c52fb34b9be8aece4b':
+                raise AssertionError('Bundled Nova64 core differs from the pinned file')
+            server.request('GET', '/RetroBridge/Web/fceumm_libretro.wasm', expected=(404,))
 
             config['BrowserPlay'] = True
             server.request('POST', config_path, config, admin)
@@ -143,7 +150,7 @@ def main():
         finally:
             smoke.docker('rm', '-f', container)
     (REPO / 'artifacts/browser-play-smoke.json').write_text(json.dumps(summary, indent=2) + '\n')
-    print('PASS: in-browser play files pinned and served, Nova64 demos listed, CSP widened only when enabled' + (', NES, Game Boy, GBA, and Genesis saves synced from iOS Safari' if args.ios else ''))
+    print('PASS: in-browser play files pinned and served, Nova64 bundled and playable without setup, demos listed' + (', NES, Game Boy, GBA, and Genesis saves synced from iOS Safari' if args.ios else ''))
     print(json.dumps(summary.get('ios_safari', {})))
 
 

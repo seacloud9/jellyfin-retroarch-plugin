@@ -10,5 +10,7 @@
     <EmbeddedResource Include="Configuration/menuPage.html" />
     <!-- LogicalName keeps spaces in cart names, which become the game titles. -->
     <EmbeddedResource Include="Demos/*.nova" LogicalName="Jellyfin.Plugin.RetroBridge.Demos.%(Filename)%(Extension)" />
+    <!-- Nova64 browser core and Nostalgist loader, pinned upstream files (see docs/third-party.md). -->
+    <EmbeddedResource Include="Web/*.js;Web/*.wasm" LogicalName="Jellyfin.Plugin.RetroBridge.Web.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -23,8 +23,7 @@ public sealed class ApiTests : IDisposable
     private readonly IHost _host;
     private readonly HttpClient _client;
     private readonly CatalogService _catalog = new();
-    // Demos are on by default in the plugin; tests that scan fixtures expect only their own games.
-    private readonly PluginConfiguration _configuration = new() { IncludeDemos = false };
+    private readonly PluginConfiguration _configuration = new();
     private readonly TestTime _time = new();
     private int _saves;
     private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets, BrowserPlayTests.TestCores);
@@ -252,7 +251,7 @@ public sealed class ApiTests : IDisposable
             } while ((status.GetProperty("running").GetBoolean() || status.GetProperty("last").ValueKind == System.Text.Json.JsonValueKind.Null) && DateTime.UtcNow < deadline);
             Assert.False(status.GetProperty("running").GetBoolean());
             Assert.Equal(1, status.GetProperty("last").GetProperty("reused").GetInt32());
-            Assert.Equal(game.Id, Assert.Single(_catalog.Games).Game.Id);
+            Assert.Equal(game.Id, Assert.Single(_catalog.Games, x => x.Game.Platform != "nova64").Game.Id); // plus the built-in demos
             using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Scan", "User", Player, "d"));
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
@@ -477,6 +476,12 @@ public sealed class ApiTests : IDisposable
         Assert.False((await Config()).GetProperty("enabled").GetBoolean());
         Assert.DoesNotContain("wasm-unsafe-eval", await Csp());
         using (var hidden = await _client.GetAsync("/RetroBridge/Web/emu.js")) Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        // The bundled Nova64 files are served even while in-browser play is off.
+        using (var bundled = await _client.GetAsync("/RetroBridge/Web/nova64_libretro.wasm"))
+        {
+            Assert.Equal(HttpStatusCode.OK, bundled.StatusCode);
+            Assert.Equal("application/wasm", bundled.Content.Headers.ContentType!.MediaType);
+        }
         using (var denied = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Web/Prepare", "User", Player, "d"))) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
 
         _configuration.BrowserPlay = true;
@@ -508,9 +513,8 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
-    public async Task BuiltInDemosAreScannedAndServedOnlyWhileIncluded()
+    public async Task BuiltInDemosAreAlwaysScannedAndServed()
     {
-        _configuration.IncludeDemos = true;
         _client.DefaultRequestHeaders.Add("Test-Role", "Administrator");
         (await _client.PostAsync("/RetroBridge/Scan?wait=true", null)).EnsureSuccessStatusCode();
         var games = (await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games?platform=nova64"))!;
@@ -519,10 +523,6 @@ public sealed class ApiTests : IDisposable
         Assert.Equal(".nova", hello.Extension);
         var bytes = await _client.GetByteArrayAsync($"/RetroBridge/Games/{hello.Id}/Content");
         Assert.Equal("PK"u8.ToArray(), bytes[..2]); // a zip cart
-        _configuration.IncludeDemos = false;
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/RetroBridge/Games/{hello.Id}/Content")).StatusCode);
-        (await _client.PostAsync("/RetroBridge/Scan?wait=true", null)).EnsureSuccessStatusCode();
-        Assert.Empty((await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games?platform=nova64"))!);
     }
 
     public void Dispose() { _client.Dispose(); _host.Dispose(); if (Directory.Exists(_demos.Directory)) Directory.Delete(_demos.Directory, true); }

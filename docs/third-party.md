@@ -1,6 +1,6 @@
 # Third-party software
 
-RetroBridge itself is GPL-2.0-or-later. Optional in-browser play uses the components below. They are **not** included in RetroBridge releases. When an administrator enables in-browser play, the Jellyfin server downloads these exact files (SHA-256 pinned in `BrowserPlayService.cs`) and serves them to that server's players.
+RetroBridge itself is GPL-2.0-or-later. In-browser play uses the components below (SHA-256 pinned in `BrowserPlayService.cs`). Nostalgist and the Nova64 web core **are included in RetroBridge releases** (see below) so the built-in demos play with no setup. The other cores are not included: when an administrator enables in-browser play, the Jellyfin server downloads those exact files and serves them to that server's players.
 
 | Component | Version | License | Source |
 |---|---|---|---|
@@ -29,4 +29,11 @@ Native play uses RetroArch and cores that the player installs separately; RetroB
 
 ## Included in RetroBridge releases
 
-The plugin itself contains eight Nova64 demo carts (`src/Jellyfin.Plugin.RetroBridge/Demos/*.nova`), copied unmodified from https://github.com/seacloud9/nova64 at tag `v0.5.7` (`examples/<name>/<name>.nova`). They are MIT-licensed; the license text is in `Demos/LICENSE.txt`.
+The plugin DLL embeds three upstream files, unmodified and byte-identical to their pinned checksums (`src/Jellyfin.Plugin.RetroBridge/Web/`):
+
+- `nostalgist.umd.js` (Nostalgist 0.23.0, MIT): `licenses/LICENSE-Nostalgist-MIT.txt` in the plugin zip.
+- `nova64_libretro.js` and `nova64_libretro.wasm` (Nova64 v0.5.7, MIT, linked with RetroArch 1.21.0, GPL-3.0): `licenses/LICENSE-Nova64-MIT.txt` and `licenses/LICENSE-RetroArch-GPL-3.0.txt` in the plugin zip. Corresponding source: the Nova64 and RetroArch links in the table above.
+
+The Nova64 core is a separate program that RetroBridge serves to browsers; it is shipped alongside the GPL-2.0-or-later plugin code as an aggregate, not linked with it. Anyone redistributing the plugin zip must keep the license files and the source links. This is an engineering summary, not legal advice.
+
+The plugin also contains eight Nova64 demo carts (`src/Jellyfin.Plugin.RetroBridge/Demos/*.nova`), copied unmodified from https://github.com/seacloud9/nova64 at tag `v0.5.7` (`examples/<name>/<name>.nova`). They are MIT-licensed; the license text is in `Demos/LICENSE.txt`.

@@ -16,6 +16,11 @@ with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
         info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
         info.compress_type = zipfile.ZIP_DEFLATED
         package.writestr(info, data)
+    # The DLL embeds the Nova64 web core (GPL-3.0 RetroArch, MIT Nova64) and Nostalgist (MIT); their notices ship alongside.
+    for path in sorted((repo / 'src/Jellyfin.Plugin.RetroBridge/Web').glob('LICENSE-*.txt')):
+        info = zipfile.ZipInfo('licenses/' + path.name, date_time=(2026, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        package.writestr(info, path.read_bytes())
 checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 (archive.with_suffix('.zip.sha256')).write_text(f'{checksum}  {archive.name}\n')
 print(archive)
