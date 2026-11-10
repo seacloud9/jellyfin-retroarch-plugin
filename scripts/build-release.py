@@ -14,7 +14,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 GUID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
-TARGET_ABI = '12.1.0.0'
+TARGET_ABI = '12.4.0.0'
 OVERVIEW = 'Play NES, Game Boy, and Game Boy Color games from your Jellyfin server in RetroArch, with one-click launch, box art, and save sync.'
 DESCRIPTION = ('Indexes NES, Game Boy, and Game Boy Color games, serves a player page with box art, and launches them in RetroArch '
                'through the RetroBridge companion (desktop or Android) using single-use tickets. Battery saves sync between devices. '
@@ -98,7 +98,7 @@ Download the archive for your computer. It's self-contained, so no .NET is neede
 In-browser play (optional, off by default) makes the Jellyfin server download pinned open-source emulator files: RetroArch 1.22.2 (GPL-3.0) with FCEUmm (GPL-2.0-or-later) and mGBA (MPL-2.0) cores, plus Nostalgist 0.23.0 (MIT). They are not included in this release. Licenses and corresponding source: [docs/third-party.md](https://github.com/{args.repo}/blob/{args.tag}/docs/third-party.md).
 
 ### Status
-Verified against real Jellyfin 12.1 in Docker, real RetroArch on macOS and Linux, and the Android emulator. Pending: a real Android phone, Windows native RetroArch, and the dashboard in real jellyfin-web. See `docs/verification.md` and `docs/manual-smoke.md`.
+Verified against real Jellyfin 12.4 in Docker, real RetroArch on macOS and Linux, and the Android emulator. Pending: a real Android phone, Windows native RetroArch, and the dashboard in real jellyfin-web. See `docs/verification.md` and `docs/manual-smoke.md`.
 
 ### Assets
 {assets}

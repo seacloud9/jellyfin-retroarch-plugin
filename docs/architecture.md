@@ -6,12 +6,12 @@ The initial review inspected [JellyEmu's README](https://github.com/Jellyfin-PG/
 
 ## Compatibility
 
-At kickoff, the [Jellyfin release API](https://api.github.com/repos/jellyfin/jellyfin/releases/latest) returned `v12.1`. Its [server project](https://github.com/jellyfin/jellyfin/blob/v12.1/Jellyfin.Server/Jellyfin.Server.csproj) targets `net10.0`; NuGet provides matching `12.1.0` Controller/Model packages. These are pinned. The [plugin template](https://github.com/jellyfin/jellyfin-plugin-template) still targeted an older server version when inspected, so its package versions were not copied blindly. Earlier Jellyfin releases are not supported by this build.
+At kickoff, the [Jellyfin release API](https://api.github.com/repos/jellyfin/jellyfin/releases/latest) returned `v12.1`. Its [server project](https://github.com/jellyfin/jellyfin/blob/v12.1/Jellyfin.Server/Jellyfin.Server.csproj) targets `net10.0`; NuGet provides matching `12.1.0` Controller/Model packages. These are pinned. The [plugin template](https://github.com/jellyfin/jellyfin-plugin-template) still targeted an older server version when inspected, so its package versions were not copied blindly. On November 9, 2026 the pins moved to `12.4.0` (latest release `v12.4`, still `net10.0`). Earlier Jellyfin releases are not supported by this build.
 
 | Component | Selected version / status |
 |---|---|
 | .NET SDK | 10.0.401, pinned in global.json |
-| Jellyfin packages | 12.1.0; compiles, live loading still unverified |
+| Jellyfin packages | 12.4.0 (moved from 12.1.0 on Nov 9, 2026); loads in real 12.4 |
 | RetroArch | User-installed; no version/core build verified yet |
 | Desktop OS | Local checks on macOS arm64; CI matrix configured for Windows/Linux/macOS |
 

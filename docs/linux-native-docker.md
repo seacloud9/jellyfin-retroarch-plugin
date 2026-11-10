@@ -20,7 +20,7 @@ All containers and the native image carry the label `org.retrobridge.smoke=true`
 |---|---|---|
 | `retrobridge-native-linux:local` image | 1.7 GB | `--native-linux-docker` |
 | `mcr.microsoft.com/dotnet/runtime:10.0` image | 330 MB | base of the native image |
-| `jellyfin/jellyfin:12.1` image | 1.3 GB | every smoke run |
+| `jellyfin/jellyfin:12.4` image | 1.3 GB | every smoke run |
 
 The macOS native run (October 21, 2026, on the maintainer's machine) also added:
 
@@ -39,7 +39,7 @@ docker rm -f $(docker ps -aq --filter label=org.retrobridge.smoke=true) 2>/dev/n
 # Images
 docker rmi retrobridge-native-linux:local retrobridge-native-linux:local-packaged
 docker image prune -f --filter label=org.retrobridge.smoke=true   # dangling rebuilds
-docker rmi mcr.microsoft.com/dotnet/runtime:10.0 jellyfin/jellyfin:12.1 ubuntu:24.04
+docker rmi mcr.microsoft.com/dotnet/runtime:10.0 jellyfin/jellyfin:12.4 ubuntu:24.04
 ```
 
 `docker rmi` fails if another project uses the same base image. That's safe; leave it.

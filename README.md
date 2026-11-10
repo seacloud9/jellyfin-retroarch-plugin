@@ -2,7 +2,7 @@
 
 An early Jellyfin plugin and native RetroArch companion prototype, based on the [development plan](jellyfin-retroarch-plugin-plan.md).
 
-**Target: Jellyfin 12.1.0, .NET SDK 10.0.401. This is not a release-ready plugin.**
+**Target: Jellyfin 12.4.0, .NET SDK 10.0.401. This is not a release-ready plugin.**
 
 The plugin provides an administrator dashboard for configuring game folders, scanning, searching, and filtering NES (`.nes`), SNES (`.sfc`, `.smc`), Nintendo 64 (`.z64`, `.n64`, `.v64`), Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), Genesis / Mega Drive (`.md`, `.gen`, `.smd`), PlayStation (`.chd`, `.pbp`), and Nova64 (`.nova`) content. Each game must be a single file: PlayStation `.cue`/`.bin` sets are not supported (convert them to CHD), and `.bin` is not used for Genesis because PlayStation shares it. Its authenticated API supplies games to a command-line companion, which verifies downloads, caches content, starts a locally selected RetroArch/core, and separates save directories by server, user, platform, and content checksum.
 
@@ -33,7 +33,7 @@ Install **RetroBridge** from the catalog, restart Jellyfin, and open Dashboard �
 
 ## Install the prototype manually
 
-1. Use a **test Jellyfin 12.1.0 server**. Loading is verified in Docker (see the [verification record](docs/verification.md)); this is still a prototype.
+1. Use a **test Jellyfin 12.4.0 server**. Loading is verified in Docker (see the [verification record](docs/verification.md)); this is still a prototype.
 2. Stop Jellyfin. Create a `RetroBridge` directory under its configured plugins directory.
 3. Extract **both DLLs** from the archive into that directory, then restart Jellyfin.
 4. As an administrator, open Dashboard → Plugins → RetroBridge.
@@ -73,7 +73,7 @@ Data defaults to `~/Library/Application Support/RetroBridge`, `~/.local/share/Re
 
 **Box art:** after each scan, the server fetches box art from the libretro thumbnails project (`thumbnails.libretro.com`) and caches it under `<Jellyfin data>/retrobridge/artwork`. Only the server contacts that site; players load images from Jellyfin. Titles are matched by No-Intro file name first, then by cleaned title with region preference. Unmatched games show a platform tile and are retried weekly or with **Fetch missing artwork**. Administrators can **Upload art** (PNG or JPEG, up to 4 MiB) for any game. An upload replaces fetched art and is never overwritten by later fetches; **Remove uploaded art** goes back to the fetched image. Turn this off in the plugin settings to keep the server from contacting the site.
 
-Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in to Jellyfin. Players find the link after `pair`, behind **Open play page** in the Android app, or from an administrator: the plugin page has a **Copy link** button. Administrators also get a **Retro Games** entry in Jellyfin's main menu. Jellyfin 12.1 shows plugin menu entries only to administrators, so players need the link. Choose the paired computer and press **Play**. The page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
+Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in to Jellyfin. Players find the link after `pair`, behind **Open play page** in the Android app, or from an administrator: the plugin page has a **Copy link** button. Administrators also get a **Retro Games** entry in Jellyfin's main menu. Jellyfin 12.x shows plugin menu entries only to administrators, so players need the link. Choose the paired computer and press **Play**. The page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
 
 The link holds only the ticket. Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket, so a repeated click or a forwarded link does nothing. Tickets live in server memory; a Jellyfin restart invalidates outstanding ones. Simultaneous launches of the same game are refused by a per-game lock.
 

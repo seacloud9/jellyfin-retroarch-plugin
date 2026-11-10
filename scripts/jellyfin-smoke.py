@@ -22,9 +22,9 @@ from fixture_rom import write_fixture
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_ID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
-# Multi-architecture manifest for the tested Jellyfin 12.1 release.
+# Multi-architecture manifest for the tested Jellyfin 12.4 release.
 LINUX_NATIVE_IMAGE = 'retrobridge-native-linux:local'
-IMAGE = 'jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e'
+IMAGE = 'jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771'
 
 
 def docker(*args, env=None, timeout=180):
@@ -341,7 +341,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
 
 def verify_server(server, container, fixtures, summary, os_handler=False):
     info = server.ready()
-    if info['Version'] not in ('12.1', '12.1.0'):
+    if info['Version'] not in ('12.4', '12.4.0'):
         raise AssertionError(f'Unexpected Jellyfin version: {info["Version"]}')
     summary['jellyfin_version'] = info['Version']
     server.request('GET', '/Startup/User')
@@ -440,7 +440,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
         server.request(method, endpoint, token=ordinary, expected=(403,))
     summary['real_authentication_boundaries'] = True
 
-    # jellyfin-web builds its main menu from this list. Jellyfin 12.1 serves it to administrators only.
+    # jellyfin-web builds its main menu from this list. Jellyfin 12.4 serves it to administrators only.
     server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=ordinary, expected=(403,))
     menu = server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=admin)
     entry = next((p for p in menu if p.get('Name') == 'RetroBridgePlay'), None)
