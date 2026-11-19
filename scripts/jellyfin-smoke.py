@@ -21,6 +21,8 @@ import zipfile
 from fixture_rom import write_fixture
 
 REPO = Path(__file__).resolve().parents[1]
+BUNDLED_TITLES = {p.stem for p in (REPO / 'src/Jellyfin.Plugin.RetroBridge/Demos').glob('*.nova')}
+TITLES_WITH_FIXTURE = BUNDLED_TITLES | {'save-counter'}
 PLUGIN_ID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
 # Multi-architecture manifest for the tested Jellyfin 12.4 release.
 LINUX_NATIVE_IMAGE = 'retrobridge-native-linux:local'
@@ -132,7 +134,7 @@ def verify_one_click(server, ordinary, user_id, device, data, stub_core, os_hand
     if page.returncode:
         raise AssertionError('Play page failed: ' + page.stderr.strip()[-300:])
     clicked = json.loads(page.stdout)
-    if clicked['devices'] != [device] or 'save-counter' not in clicked['games'] or len(clicked['games']) != 9 or clicked['errors']:
+    if clicked['devices'] != [device] or set(clicked['games']) != TITLES_WITH_FIXTURE or clicked['errors']:
         raise AssertionError(f'Unexpected play page state: {clicked}')
     log = data / 'launcher.log'
     if os_handler is True:
@@ -268,7 +270,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
         server.request('POST', '/System/Configuration', system, admin)
     config['PlayerUserIds'] = [user_id]
     server.request('POST', config_path, config, admin)
-    if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 9:  # fixture plus built-in demos
+    if {g['Title'] for g in server.request('GET', '/RetroBridge/Games', token=ordinary)} != TITLES_WITH_FIXTURE:
         raise AssertionError('Allowed player cannot list games')
     server.request('POST', '/RetroBridge/Scan', token=ordinary, expected=(403,))
 
@@ -327,7 +329,7 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
         server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(404,))
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(404,))
         server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/Access', {'PlayerUserIds': []}, admin)
-        if len(server.request('GET', '/RetroBridge/Games', token=ordinary)) != 9:
+        if {g['Title'] for g in server.request('GET', '/RetroBridge/Games', token=ordinary)} != TITLES_WITH_FIXTURE:
             raise AssertionError('Game not restored after clearing its restriction')
         summary['per_game_access'] = True
         config = server.request('GET', config_path, token=admin)
@@ -360,7 +362,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
 
     # The built-in demos are indexed at startup, before any administrator scan or configuration.
     deadline = time.time() + 30
-    while len([g for g in server.request('GET', '/RetroBridge/Games?platform=nova64', token=admin)]) != 8:
+    while {g['Title'] for g in server.request('GET', '/RetroBridge/Games?platform=nova64', token=admin)} != BUNDLED_TITLES:
         if time.time() > deadline:
             raise AssertionError('Built-in Nova64 demos were not listed after startup')
         time.sleep(0.5)
@@ -373,7 +375,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     config['GameRoots'] = ['/games']
     server.request('POST', config_path, config, admin)
     scan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
-    # The fixture game plus the eight built-in demos.
+    # The scan counts only the fixture from the configured folder.
     if not scan['Published'] or scan['Count'] != 1:
         raise AssertionError('Fixture scan failed')
     games = server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin)
@@ -447,7 +449,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     for method, endpoint in [('GET', '/RetroBridge/Games'), ('POST', '/RetroBridge/Scan'), ('GET', route)]:
         server.request(method, endpoint, expected=(401,))
     starter = server.request('GET', '/RetroBridge/Games', token=ordinary)
-    if len(starter) != 8 or not all(g['IsBundled'] for g in starter):
+    if {g['Title'] for g in starter} != BUNDLED_TITLES or not all(g['IsBundled'] for g in starter):
         raise AssertionError('An unconfigured player should see exactly the starter library')
     server.request('POST', '/RetroBridge/Scan', token=ordinary, expected=(403,))
     server.request('GET', route, token=ordinary, expected=(404,))

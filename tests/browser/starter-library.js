@@ -20,7 +20,7 @@ async function assertRendered(page, canvas, title) {
 }
 
 async function run() {
-  const [server, username] = process.argv.slice(2);
+  const [server, username, ...expectedTitles] = process.argv.slice(2);
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   try {
     const context = await browser.newContext({ viewport: { width: 1152, height: 900 } });
@@ -36,12 +36,14 @@ async function run() {
     const page = await opened;
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.waitForFunction(() => {
+    await page.waitForFunction(expectedCount => {
       const images = [...document.querySelectorAll('#included img')];
-      return images.length === 8 && images.every(img => img.complete && img.naturalWidth > 0);
-    });
-    assert.equal(await page.locator('#games button').count(), 8);
+      return images.length === expectedCount && images.every(img => img.complete && img.naturalWidth > 0);
+    }, expectedTitles.length);
+    assert.equal(await page.locator('#games button').count(), expectedTitles.length);
     const titles = await page.locator('#included .card-title').allTextContents();
+
+    assert.deepEqual([...titles].sort(), expectedTitles.sort());
 
     // Exit while a cart is loading, then launch every game in the same tab. The loader changes
     // the canvas id, so a successful first launch alone doesn't establish that replays work.
@@ -69,7 +71,7 @@ async function run() {
       await page.locator('#player').waitFor({ state: 'hidden' });
     }
     assert.deepEqual(errors, []);
-    console.log('Passed the Jellyfin Web menu, eight previews, cancelled launch and eight consecutive game launches.');
+    console.log(`Passed the Jellyfin Web menu, ${titles.length} previews, cancelled launch and ${titles.length} consecutive game launches.`);
   } finally {
     await browser.close();
   }

@@ -518,7 +518,7 @@ public sealed class ApiTests : IDisposable
         _client.DefaultRequestHeaders.Add("Test-Role", "User");
         _client.DefaultRequestHeaders.Add("Test-User", Player.ToString());
         var games = (await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games"))!;
-        Assert.Equal(8, games.Length);
+        Assert.Equal(DemoLibrary.Games.Count, games.Length);
         Assert.All(games, g => Assert.True(g.IsBundled && g.HasArt));
         var hello = Assert.Single(games, x => x.Title == "Hello 3D");
         var bytes = await _client.GetByteArrayAsync($"/RetroBridge/Games/{hello.Id}/Content");

@@ -6,9 +6,10 @@ namespace RetroBridge.Tests;
 public sealed class DemoLibraryTests
 {
     [Fact]
-    public void ShipsEightIdentifiableCartsWithScreenshots()
+    public void ShipsDistinctIdentifiableCartsWithScreenshots()
     {
-        Assert.Equal(8, DemoLibrary.Games.Count);
+        Assert.Equal(45, DemoLibrary.Games.Count);
+        Assert.Distinct(DemoLibrary.Games.Select(item => item.Game.Id));
         Assert.Contains(DemoLibrary.Games, x => x.Game.Title == "Hello 3D");
         foreach (var item in DemoLibrary.Games)
         {

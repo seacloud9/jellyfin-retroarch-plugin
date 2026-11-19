@@ -36,6 +36,4 @@ The plugin DLL embeds three upstream files, unmodified and byte-identical to the
 
 The Nova64 core is a separate program that RetroBridge serves to browsers; it is shipped alongside the GPL-2.0-or-later plugin code as an aggregate, not linked with it. Anyone redistributing the plugin zip must keep the license files and the source links. This is an engineering summary, not legal advice.
 
-The plugin also contains eight Nova64 demo carts (`src/Jellyfin.Plugin.RetroBridge/Demos/*.nova`), copied unmodified from https://github.com/seacloud9/nova64 at tag `v0.5.7` (`examples/<name>/<name>.nova`). They are MIT-licensed; the license text is in `Demos/LICENSE.txt`.
-
-The eight PNG previews beside the carts are screenshots captured while running those bundled games in RetroBridge.
+The starter library ships MIT-licensed examples from Nova64 v0.5.7. Upstream `.nova` files ship verbatim when available. For source-only examples, the cartridge is a ZIP containing the original `code.js` and a `manifest.json` that identifies the entry point. The adjacent PNGs are screenshots captured in the RetroBridge player. The Nova64 MIT notice ships in the plugin ZIP. [Per-title source directories](included-games.md) · [License text](../src/Jellyfin.Plugin.RetroBridge/Demos/LICENSE.txt)

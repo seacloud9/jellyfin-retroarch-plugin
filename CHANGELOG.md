@@ -4,10 +4,10 @@ Each release's section becomes "What's new" in its GitHub release notes and the 
 
 ## [Unreleased]
 
-- Every signed-in Jellyfin Web user can open **Retro Games** from the menu and play the eight included games immediately. Each card uses a screenshot from the game. Administrators can share additional game folders with selected players.
+- Every signed-in Jellyfin Web user can open **Retro Games** from the menu and play 45 included Nova64 games and demos immediately. Each card uses a screenshot from the game. Administrators can share additional game folders with selected players.
 - Fixed browser play after returning to the library, keyboard focus and Nova64 controls. Browser games have a working primary **Play** button, with **Play on** available for paired devices.
 - **Requires Jellyfin 12.4.** Built and tested against Jellyfin 12.4.0 (was 12.1.0).
-- **The built-in Nova64 demos are always included and play with no setup.** Every installation lists the eight demo games from the first start, before any scan, and they play in the browser right away: the Nova64 core and its loader now ship inside the plugin (the zip grows by about 2 MB), so nothing has to be enabled or downloaded. Game folders add your own games alongside them. The *Include the built-in Nova64 demo games* setting is gone, and Nova64 no longer appears in the in-browser play platform list because it is always on.
+- **The built-in Nova64 demos are always included and play with no setup.** Every installation lists the included titles from the first start, before any scan, and they play in the browser right away: the Nova64 core and its loader now ship inside the plugin (the zip grows by about 2 MB), so nothing has to be enabled or downloaded. Game folders add your own games alongside them. The *Include the built-in Nova64 demo games* setting is gone, and Nova64 no longer appears in the in-browser play platform list because it is always on.
 - In-browser play for the other systems is unchanged: still off by default, and still downloaded with **Download emulator files** (now about 12 MB).
 
 ## [0.3.0] - 2026-11-07

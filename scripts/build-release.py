@@ -15,8 +15,8 @@ import zipfile
 REPO = Path(__file__).resolve().parents[1]
 GUID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
 TARGET_ABI = '12.4.0.0'
-OVERVIEW = 'Open Retro Games in Jellyfin Web to play eight included Nova64 games. Add your own games and play on a paired RetroArch device.'
-DESCRIPTION = ('Every player starts with a library of eight games and gameplay screenshots. The included games run in the browser. '
+OVERVIEW = 'Open Retro Games in Jellyfin Web to play the included Nova64 games and demos. Add your own games and play on a paired RetroArch device.'
+DESCRIPTION = ('Every player starts with a library of games and demos with gameplay screenshots. The included games run in the browser. '
                'Administrators can add game folders and share them with selected players. Supported systems also offer battery save sync.')
 
 

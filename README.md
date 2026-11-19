@@ -5,10 +5,10 @@ RetroBridge adds a playable game library to Jellyfin Web. This build targets Jel
 ## Play an included game
 
 1. Sign in to Jellyfin Web. Open the navigation menu and choose **Retro Games**.
-2. Choose a game from **Included games** and press **Play**. All eight Nova64 games and their browser emulator ship in the plugin. A new player can start here immediately.
+2. Choose a game from **Included games** and press **Play**. All 45 Nova64 games and demos, their screenshots and the browser emulator ship in the plugin. Try F-Zero Nova 3D, Gauntlet 64 or Ember Mine Dash. [Browse all included titles](docs/included-games.md).
 3. Use the on-screen controls or the keyboard. The arrow keys move, Z and X are action buttons, and Enter is Start. Select **Back to library** to choose another game.
 
-![RetroBridge library showing the eight included Nova64 games with gameplay previews and Play buttons](docs/screenshots/library.png)
+![RetroBridge library showing the included Nova64 titles with gameplay previews and Play buttons](docs/screenshots/library.png)
 
 ![A Nova64 game running inside RetroBridge with its on-screen controls and Back to library button](docs/screenshots/gameplay.png)
 

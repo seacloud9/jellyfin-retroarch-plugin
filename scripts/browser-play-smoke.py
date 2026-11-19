@@ -60,8 +60,8 @@ def main():
             server.request('POST', '/Startup/Complete')
             admin = server.login('admin', password)
             user = server.request('POST', '/Users/New', {'Name': 'player', 'Password': player_password}, admin)
-            subprocess.run(['node', str(REPO / 'tests/browser/starter-library.js'), server.url, 'player'],
-                           env={**os.environ, 'RETROBRIDGE_TEST_PASSWORD': player_password}, check=True, timeout=240)
+            subprocess.run(['node', str(REPO / 'tests/browser/starter-library.js'), server.url, 'player', *sorted(smoke.BUNDLED_TITLES)],
+                           env={**os.environ, 'RETROBRIDGE_TEST_PASSWORD': player_password}, check=True, timeout=90 + 12 * len(smoke.BUNDLED_TITLES))
             summary['starter_library_menu_and_play_buttons'] = True
             config_path = '/Plugins/' + smoke.PLUGIN_ID + '/Configuration'
             config = server.request('GET', config_path, token=admin)
@@ -103,7 +103,7 @@ def main():
 
             listed = server.request('GET', '/RetroBridge/Games', token=player)
             demos = sorted(g['Title'] for g in listed if g['Platform'] == 'nova64')
-            if len(demos) != 8 or 'Hello 3D' not in demos:
+            if demos != sorted(smoke.BUNDLED_TITLES):
                 raise AssertionError(f'Built-in Nova64 demos not listed: {demos}')
             summary['nova64_demos'] = demos
             games = {g['Platform']: g for g in listed}
