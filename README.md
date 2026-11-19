@@ -35,6 +35,8 @@ The archive is written to `artifacts/RetroBridge-<version>.zip`. CI runs .NET te
 
 ## Install the plugin
 
+To build, install and verify the plugin on a Jellyfin Docker server entirely from a terminal, follow the [command-line installation guide](docs/terminal-install.md).
+
 **To try the changes on main**, use the plugin ZIP from a successful **Build and test** run on main or build it locally, then follow the manual steps below. The Jellyfin catalog serves tagged releases.
 
 **From Jellyfin's catalog:** Dashboard → Plugins → Repositories → **+**, and add:
