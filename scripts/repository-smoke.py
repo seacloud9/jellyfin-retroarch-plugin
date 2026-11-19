@@ -97,7 +97,7 @@ def main():
                 server.request('POST', config_path, config, admin)
                 server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
                 games_before = server.request('GET', '/RetroBridge/Games', token=admin)
-                if len(games_before) != 1:
+                if not any(g['Title'] == 'save-counter' for g in games_before):
                     raise AssertionError(f'Old version did not index the fixture: {games_before}')
                 print(f'Installed and configured RetroBridge {old}', flush=True)
             server.request('POST', '/Repositories', [{'Name': 'RetroBridge', 'Url': manifest_url, 'Enabled': True}], admin)
@@ -112,7 +112,7 @@ def main():
                 config = server.request('GET', '/Plugins/' + smoke.PLUGIN_ID + '/Configuration', token=admin)
                 if config['GameRoots'] != ['/games']:
                     raise AssertionError('Configuration lost in the upgrade')
-                if [g['Id'] for g in games] != [g['Id'] for g in games_before]:
+                if not {g['Id'] for g in games_before}.issubset(g['Id'] for g in games):
                     raise AssertionError('Catalog snapshot lost in the upgrade')
                 print(f'Upgrade kept configuration and catalog ({len(games)} game)', flush=True)
         finally:

@@ -15,10 +15,9 @@ import zipfile
 REPO = Path(__file__).resolve().parents[1]
 GUID = '4be0a14e-f03e-4e52-b702-3e38b8cedf17'
 TARGET_ABI = '12.4.0.0'
-OVERVIEW = 'Play NES, Game Boy, and Game Boy Color games from your Jellyfin server in RetroArch, with one-click launch, box art, and save sync.'
-DESCRIPTION = ('Indexes NES, Game Boy, and Game Boy Color games, serves a player page with box art, and launches them in RetroArch '
-               'through the RetroBridge companion (desktop or Android) using single-use tickets. Battery saves sync between devices. '
-               'Prototype: see the project README for setup and limits.')
+OVERVIEW = 'Open Retro Games in Jellyfin Web to play eight included Nova64 games. Add your own games and play on a paired RetroArch device.'
+DESCRIPTION = ('Every player starts with a library of eight games and gameplay screenshots. The included games run in the browser. '
+               'Administrators can add game folders and share them with selected players. Supported systems also offer battery save sync.')
 
 
 def main():
@@ -90,6 +89,8 @@ Add this repository in Jellyfin (Dashboard → Plugins → Repositories → +):
 `https://github.com/{args.repo}/releases/latest/download/manifest.json`
 
 Then install **RetroBridge** from the catalog and restart Jellyfin. Or install `RetroBridge-Plugin-{version}.zip` manually (extract into `plugins/RetroBridge`).
+
+Open **Retro Games** from the Jellyfin Web navigation and press **Play** on an included game.
 
 ### Companion (desktop)
 Download the archive for your computer. It's self-contained, so no .NET is needed. Follow `QUICKSTART.txt`. The builds are **not signed or notarized**: macOS Gatekeeper and Windows SmartScreen will warn.

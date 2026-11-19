@@ -60,6 +60,9 @@ def main():
             server.request('POST', '/Startup/Complete')
             admin = server.login('admin', password)
             user = server.request('POST', '/Users/New', {'Name': 'player', 'Password': player_password}, admin)
+            subprocess.run(['node', str(REPO / 'tests/browser/starter-library.js'), server.url, 'player'],
+                           env={**os.environ, 'RETROBRIDGE_TEST_PASSWORD': player_password}, check=True, timeout=240)
+            summary['starter_library_menu_and_play_buttons'] = True
             config_path = '/Plugins/' + smoke.PLUGIN_ID + '/Configuration'
             config = server.request('GET', config_path, token=admin)
             if config.get('BrowserPlay') is not False:

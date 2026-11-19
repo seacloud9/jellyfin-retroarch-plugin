@@ -3,79 +3,113 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RetroBridge</title>
 <style>
-  :root { --bg: #f4f4f6; --panel: #ffffff; --text: #1b1b1f; --muted: #5d5d66; --accent: #00a4dc; --accent-text: #ffffff; --border: #d9d9df; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #101014; --panel: #1c1c22; --text: #ececf1; --muted: #a0a0ab; --border: #2e2e36; } }
+  :root { color-scheme: dark; --bg: #10161e; --panel: #1b2430; --text: #f3f7fa; --muted: #b0bdca; --accent: #8de7d0; --border: #36414d; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { margin: 0 0 4px; font-size: 1.6rem; }
-  .muted { color: var(--muted); margin: 0 0 20px; }
-  .bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-  .bar label { flex: 1 1 220px; display: flex; flex-direction: column; gap: 4px; font-size: .875rem; color: var(--muted); }
-  input, select, button { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  li { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
-  li.empty { grid-column: 1 / -1; }
-  .cover { aspect-ratio: 3 / 4; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); font-weight: 600; letter-spacing: .05em; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 1160px; margin: auto; padding: 0 clamp(16px,4vw,48px) 28px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; border-bottom: 1px solid var(--border); }
+  .brand { display: inline-flex; align-items: center; gap: .65em; font-weight: 750; letter-spacing: -.035em; }
+  .brand::before { content: ""; width: 1em; height: 1em; background: var(--accent); clip-path: polygon(33% 0,67% 0,67% 33%,100% 33%,100% 67%,67% 67%,67% 100%,33% 100%,33% 67%,0 67%,0 33%,33% 33%); }
+  a { color: var(--accent); }
+  header a, footer { font-size: .85rem; color: var(--muted); }
+  h1 { margin: 26px 0 0; font-size: clamp(2rem,5vw,3.4rem); line-height: 1.15; letter-spacing: -.055em; }
+  h2 { margin: 0; font-size: 1.2rem; letter-spacing: -.025em; }
+  .muted, .notice { color: var(--muted); }
+  .intro { margin: 8px 0 24px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 20px; }
+  .bar label { font-size: .83rem; color: var(--muted); }
+  .bar label > * { display: block; margin-top: 4px; }
+  input, select, button { font: inherit; padding: 8px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button, summary { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .bar input { width: min(230px,100%); }
+  .shelf { margin-bottom: 24px; }
+  .shelf h2 { margin-bottom: 12px; }
+  .count { color: var(--muted); font-size: .82rem; font-weight: 500; margin-left: .6em; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fill,minmax(min(100%,204px),1fr)); }
+  li { min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  .cover { aspect-ratio: 16 / 9; background: #141b26; display: grid; place-items: center; overflow: hidden; color: var(--muted); font-weight: 600; }
   .cover img { width: 100%; height: 100%; object-fit: contain; }
-  li span { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
-  li small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
-  li small.saved { color: var(--accent); }
-  button.play { background: var(--accent); color: var(--accent-text); border: 0; padding: 8px 18px; cursor: pointer; margin-top: auto; }
-  button:disabled { opacity: .5; cursor: default; }
-  #status { min-height: 1.5em; }
-  .notice { margin-bottom: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); }
-  code { overflow-wrap: anywhere; }
-  button.browser { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; cursor: pointer; }
+  .card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .card-title { font-size: 1.06rem; font-weight: 700; overflow-wrap: anywhere; }
+  li small { color: var(--muted); }
+  .card-actions { margin-top: auto; padding-top: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  button.play { background: var(--accent); color: #0d2922; border: 0; padding: 6px 15px; font-size: .9rem; font-weight: 700; }
+  button.play::before { content: ""; display: inline-block; margin-right: 7px; width: .6em; height: .7em; background: currentColor; clip-path: polygon(0 0,100% 50%,0 100%); }
+  button.play:hover { background: #b1f9e5; }
+  button.remote { font-size: .83rem; }
+  button:disabled { opacity: .55; cursor: default; }
+  #status:empty { margin: 0; }
+  footer { border-top: 1px solid var(--border); padding-top: 14px; }
+  footer summary { width: fit-content; }
+  @media (max-width: 520px) {
+    ul { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+    .card-body { padding: 10px; }
+    .bar { align-items: stretch; } .bar label { flex: 1 1 120px; } .bar label > * { width: 100%; }
+  }
   #player { position: fixed; inset: 0; background: #000; color: #eee; z-index: 10; touch-action: none; user-select: none; -webkit-user-select: none;
     display: grid; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
-    grid-template: "screen screen" auto "status status" auto "dpad actions" auto "system system" auto "exit exit" auto / 1fr 1fr; align-content: start; justify-items: center; }
-  #player canvas { grid-area: screen; width: 100%; max-width: 720px; max-height: 58vh; object-fit: contain; image-rendering: pixelated; background: #000; outline: none; border: 0; }
+    overflow-y: auto;
+    grid-template: "heading heading" auto "screen screen" auto "status status" auto "dpad actions" auto "system system" auto / 1fr 1fr; align-content: start; justify-items: center; }
+  .player-heading { grid-area: heading; width: min(100%,920px); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  #screen { grid-area: screen; width: min(100%,920px,95vh); aspect-ratio: 16 / 9; align-self: center; min-height: 0; }
+  #screen canvas { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; background: #000; outline: none; border: 0; }
   #player-status { grid-area: status; min-height: 1.4em; margin: 0; font-size: .9rem; color: #aaa; text-align: center; }
-  .dpad { grid-area: dpad; justify-self: start; }
-  .actions { grid-area: actions; justify-self: end; align-self: center; }
+  .dpad { grid-area: dpad; justify-self: end; margin-right: clamp(0px,4vw,40px); }
+  .actions { grid-area: actions; justify-self: start; margin-left: clamp(0px,4vw,40px); align-self: center; }
   .system { grid-area: system; }
-  .controls-end { grid-area: exit; display: flex; gap: 12px; }
+  .controls-end { display: flex; gap: 12px; }
   /* Phones held sideways: controls either side of the screen. */
   @media (orientation: landscape) and (max-height: 520px) {
-    #player { grid-template: "dpad screen actions" 1fr "status status status" auto "system system system" auto "exit exit exit" auto / auto 1fr auto; align-content: stretch; align-items: center; }
-    #player canvas { max-height: 72vh; }
+    #player { grid-template: "heading heading heading" auto "dpad screen actions" 1fr "status status status" auto "system system system" auto / auto 1fr auto; align-content: stretch; align-items: center; }
+    #screen { width: min(100%,100vh); }
   }
-  .dpad { display: grid; grid-template: repeat(3, 52px) / repeat(3, 52px); }
+  .dpad { display: grid; grid-template: repeat(3, clamp(36px,10vw,46px)) / repeat(3, clamp(36px,10vw,46px)); }
   .pad button, .system button { background: #2a2a31; color: #eee; border: 0; border-radius: 10px; font-weight: 700; touch-action: none; }
   .pad button:active, .pad button.down, .system button.down { background: #45454f; }
-  .actions { display: grid; grid-template-columns: repeat(var(--columns, 2), 64px); gap: 12px; }
+  .actions { display: grid; grid-template-columns: repeat(var(--columns, 2), clamp(34px,10vw,50px)); gap: 6px; }
   .actions .shoulder { height: 40px; border-radius: 10px; font-size: .8rem; }
-  .actions .round { width: 64px; height: 64px; border-radius: 50%; }
+  .actions .round { width: clamp(34px,10vw,50px); height: clamp(34px,10vw,50px); border-radius: 50%; }
   .system { display: flex; gap: 12px; }
   .system button { padding: 8px 14px; font-size: .8rem; }
-  details.diagnostics { margin-top: 32px; font-size: .85rem; color: var(--muted); }
+  details.diagnostics { margin-bottom: 8px; font-size: .85rem; color: var(--muted); }
   details.diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); }
   #exit, #fullscreen { background: transparent; border: 1px solid #555; color: #eee; padding: 8px 18px; border-radius: 6px; }
 </style>
 </head><body><main>
-  <h1>RetroBridge</h1>
-  <p class="muted">Play NES, SNES, Nintendo 64, Game Boy, Genesis, PlayStation, and Nova64 games in RetroArch on a paired computer, or right here in your browser.</p>
-  <div id="setup" class="notice" hidden></div>
+  <div id="browse">
+  <header><span class="brand">RetroBridge</span><a href="../web/">Jellyfin home</a></header>
+  <h1>Game library</h1>
+  <p class="muted intro">Choose an included game to play in this browser.</p>
+  <div id="setup" class="notice" role="status" hidden></div>
   <div id="library" hidden>
     <div class="bar">
-      <label>Play on<select id="device"></select></label>
-      <label>Search<input id="search" type="search" autocomplete="off"></label>
-      <label>Platform<select id="platform"><option value="">All</option></select></label>
+      <label>Search games<input id="search" type="search" autocomplete="off" placeholder="Game title"></label>
+      <label>Platform<select id="platform"><option value="">All platforms</option></select></label>
+      <label hidden>Paired device<select id="device"></select></label>
     </div>
     <p id="status" role="status" aria-live="polite"></p>
-    <ul id="games"></ul>
+    <div id="games">
+      <section class="shelf"><h2>Included games<span id="included-count" class="count"></span></h2><ul id="included"></ul></section>
+      <section class="shelf"><h2>Added games<span id="added-count" class="count"></span></h2><ul id="added"></ul></section>
+    </div>
+    <p class="muted" id="empty" hidden></p>
   </div>
-<p class="muted" id="third-party" hidden>In-browser play uses open-source emulators: RetroArch (GPL-3.0), FCEUmm (GPL-2.0-or-later), mGBA (MPL-2.0), ClownMDEmu (AGPL-3.0), PCSX ReARMed (GPL-2.0-or-later), Nova64 (MIT), and Nostalgist (MIT). <a href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" target="_blank" rel="noopener">Licenses and source code</a>.</p>
-<details class="diagnostics" id="diagnostics">
+<footer><details class="diagnostics" id="diagnostics">
   <summary>Diagnostics</summary>
   <p>Share this report if something does not work. It contains no passwords or tokens.</p>
   <button id="copy-report" type="button">Copy report</button>
   <pre id="report"></pre>
 </details>
-<div id="player" hidden>
-  <canvas id="screen"></canvas>
+<a id="third-party" href="https://github.com/seacloud9/jellyfin-retroarch-plugin/blob/main/docs/third-party.md" hidden>Emulator licenses and source</a>
+</footer>
+</div>
+<div id="player" role="dialog" aria-modal="true" aria-labelledby="playing-title" hidden>
+  <div class="player-heading"><h2 id="playing-title"></h2>
+    <div class="controls-end"><button id="fullscreen" type="button" hidden>Fullscreen</button><button id="exit" type="button">Back to library</button></div>
+  </div>
+  <div id="screen"></div>
   <p id="player-status" role="status" aria-live="polite"></p>
   <div class="dpad pad">
     <span></span><button data-button="up" aria-label="Up">▲</button><span></span>
@@ -84,15 +118,14 @@
   </div>
   <div class="actions pad" id="actions"></div>
   <div class="system"><button data-button="select">SELECT</button><button data-button="start">START</button></div>
-  <div class="controls-end"><button id="fullscreen" type="button" hidden>Fullscreen</button><button id="exit" type="button">Save and exit</button></div>
 </div>
 <script>
 (function () {
-  var auth = null, games = [], devices = [], saved = {}, web = { Enabled: false, Platforms: [], Cores: {}, MaxBytes: Infinity };
+  var auth = null, games = [], devices = [], saved = {}, web = { Enabled: true, Platforms: ['nova64'], Cores: { nova64: 'nova64' }, MaxBytes: Infinity };
   // Same list as RetroBridge.Domain.Platforms.
   var PLATFORMS = { nes: 'NES', snes: 'SNES', n64: 'Nintendo 64', gb: 'Game Boy', gbc: 'Game Boy Color', gba: 'Game Boy Advance', genesis: 'Genesis / Mega Drive', psx: 'PlayStation', nova64: 'Nova64' };
   // Touch buttons per system: [RetroArch button, label]. Shoulder buttons go on the top row.
-  var FACE = { snes: [['y', 'Y'], ['x', 'X'], ['b', 'B'], ['a', 'A']], genesis: [['y', 'A'], ['b', 'B'], ['a', 'C']],
+  var FACE = { nova64: [['b', 'Z'], ['a', 'X']], snes: [['y', 'Y'], ['x', 'X'], ['b', 'B'], ['a', 'A']], genesis: [['y', 'A'], ['b', 'B'], ['a', 'C']],
     psx: [['y', '□'], ['x', '△'], ['b', '✕'], ['a', '○']] };
   var SHOULDERS = { snes: true, gba: true, psx: true };
   // Diagnostics: recent errors and outcomes for the support report (no tokens are ever recorded).
@@ -106,9 +139,9 @@
   // iOS cannot run a companion, so it can only send launches to a listening device. Android has its own companion app.
   var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var android = /Android/.test(navigator.userAgent);
-  var mobile = ios || android;
+
   var $ = function (id) { return document.getElementById(id); };
-  Object.keys(PLATFORMS).forEach(function (id) { var o = document.createElement('option'); o.value = id; o.textContent = PLATFORMS[id]; $('platform').append(o); });
+
 
   // Reuse the Jellyfin web client's session from this origin; this page stores nothing.
   function session() {
@@ -148,29 +181,38 @@
     return new Date(when).toLocaleDateString();
   }
   function render() {
-    var search = $('search').value.toLowerCase(), platform = $('platform').value, list = $('games');
-    list.replaceChildren();
+    var search = $('search').value.trim().toLowerCase(), platform = $('platform').value;
+    $('included').replaceChildren(); $('added').replaceChildren();
     games.filter(function (g) { return g.Title.toLowerCase().includes(search) && (!platform || g.Platform === platform); }).forEach(function (g) {
-      var li = document.createElement('li'), cover = document.createElement('div'), name = document.createElement('span'), tag = document.createElement('small'), play = document.createElement('button');
-      cover.className = 'cover'; cover.textContent = g.Platform.toUpperCase();
-      if (g.HasArt) art(g).then(function (url) { if (!url) return; var img = document.createElement('img'); img.src = url; img.alt = ''; cover.replaceChildren(img); });
-      name.textContent = g.Title; tag.textContent = g.Platform.toUpperCase() + (g.Region ? ' · ' + g.Region : ''); name.append(tag);
-      if (saved[g.Id]) { var save = document.createElement('small'); save.className = 'saved'; save.textContent = 'Saved ' + ago(saved[g.Id].Modified) + ' on ' + saved[g.Id].Device; name.append(save); }
-      play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title);
-      play.disabled = !devices.length; if (!devices.length) play.title = 'Pair a device to play';
-      play.addEventListener('click', function () { launch(g, play); });
-      li.append(cover, name, play);
+      var li = document.createElement('li'), cover = document.createElement('div'), body = document.createElement('div');
+      var name = document.createElement('span'), tag = document.createElement('small'), actions = document.createElement('div');
+      cover.className = 'cover'; cover.textContent = PLATFORMS[g.Platform] || g.Platform;
+      if (g.HasArt) art(g).then(function (url) { if (url) { var img = new Image(); img.src = url; img.alt = ''; cover.replaceChildren(img); } });
+      body.className = 'card-body'; name.className = 'card-title'; name.textContent = g.Title;
+      tag.textContent = (PLATFORMS[g.Platform] || g.Platform) + (g.Region ? ' · ' + g.Region : '');
+      body.append(name, tag);
+      if (saved[g.Id]) { var save = document.createElement('small'); save.textContent = 'Saved ' + ago(saved[g.Id].Modified) + ' on ' + saved[g.Id].Device; body.append(save); }
+      actions.className = 'card-actions';
       if (inBrowser(g)) {
-        var here = document.createElement('button');
-        here.className = 'browser'; here.textContent = 'Play in browser'; here.setAttribute('aria-label', 'Play ' + g.Title + ' in this browser');
-        here.addEventListener('click', function () { playInBrowser(g); });
-        // iOS cannot run a companion, so in-browser play is the main action there (and without a paired device).
-        if (ios || !devices.length) { here.className = 'play'; play.className = 'browser'; li.insertBefore(here, play); }
-        else li.append(here);
+        var play = document.createElement('button');
+        play.className = 'play'; play.textContent = 'Play'; play.setAttribute('aria-label', 'Play ' + g.Title + ' in this browser');
+        play.addEventListener('click', function () { playInBrowser(g); }); actions.append(play);
       }
-      list.append(li);
+      if (devices.length) {
+        var remote = document.createElement('button');
+        remote.className = inBrowser(g) ? 'remote' : 'play'; remote.textContent = 'Play on ' + selected().Name;
+        remote.setAttribute('aria-label', 'Play ' + g.Title + ' on ' + selected().Name);
+        remote.addEventListener('click', function () { launch(g, remote); }); actions.append(remote);
+      }
+      if (!actions.children.length) { var hint = document.createElement('small'); hint.textContent = 'Pair a RetroBridge companion to play this game.'; actions.append(hint); }
+      body.append(actions); li.append(cover, body); $(g.IsBundled ? 'included' : 'added').append(li);
     });
-    if (!list.children.length) { var empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = games.length ? 'No games match.' : 'No games yet. Ask an administrator to scan the library.'; list.append(empty); }
+    ['included', 'added'].forEach(function (id) {
+      var count = $(id).children.length;
+      $(id).parentElement.hidden = !count; $(id + '-count').textContent = String(count);
+    });
+    $('empty').hidden = !!($('included').children.length || $('added').children.length);
+    $('empty').textContent = games.length ? 'No games match these filters.' : 'No games are available for this account.';
   }
   // Very large discs are left to native play: the whole game is held in the page's memory.
   function inBrowser(g) { return web.Enabled && web.Platforms.includes(g.Platform) && !(g.Size > (web.MaxBytes || Infinity)); }
@@ -197,7 +239,7 @@
   }
   // ---- In-browser play (experimental): emulator files come from this server; saves use the save sync API. ----
   // Named 'playing' so it does not shadow session(), which reads the Jellyfin login.
-  var emulator = null, playing = null;
+  var emulator = null, playing = null, launchRequest = null, opener = null;
   function raw(method, path, body, keepalive) {
     return fetch(path, { method: method, headers: { Authorization: header() }, body: body, keepalive: !!keepalive });
   }
@@ -263,24 +305,44 @@
     throw new Error('the emulator did not write its save');
   }
   async function playInBrowser(game, fromLink) {
+    if (!$('player').hidden) return;
+    opener = document.activeElement;
+    $('browse').inert = true;
+    window.__browserPlay = { booted: false };
+    var request = new AbortController();
+    launchRequest = request;
+    var canvas = document.createElement('canvas'); canvas.tabIndex = 0;
+    // Nostalgist assigns its own canvas id. Each launch gets a new surface inside the player.
+    $('screen').replaceChildren(canvas);
+    $('playing-title').textContent = game.Title;
+    $('exit').textContent = 'Back to library';
     showButtons(game.Platform);
     $('player').hidden = false; playerStatus('Loading ' + game.Title + '…');
+    $('exit').focus();
     try {
       await loadNostalgist();
       var name = game.Id + '.srm', sram, revision = 0;
-      var content = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Content');
+      var core = web.Cores[game.Platform], route = 'Games/' + encodeURIComponent(game.Id);
+      var options = { headers: { Authorization: header() }, signal: request.signal };
+      var content = await fetch(route + '/Content', options);
       if (!content.ok) throw new Error('game unavailable');
-      var list = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Saves');
-      var server = list.ok ? (await list.json()).filter(function (s) { return s.Name === name; })[0] : null;
+      var list = NO_SAVES[core] ? null : await fetch(route + '/Saves', options);
+      var server = list && list.ok ? (await list.json()).filter(function (s) { return s.Name === name; })[0] : null;
       if (server) {
-        var download = await raw('GET', 'Games/' + encodeURIComponent(game.Id) + '/Saves/' + encodeURIComponent(name));
+        var download = await fetch(route + '/Saves/' + encodeURIComponent(name), options);
         if (download.ok) { sram = await download.blob(); revision = server.Revision; }
       }
-      var core = web.Cores[game.Platform], sramBytes = sram ? new Uint8Array(await sram.arrayBuffer()) : null;
-      emulator = await Nostalgist.launch({
-        element: $('screen'),
+      var sramBytes = sram ? new Uint8Array(await sram.arrayBuffer()) : null;
+      var rom = await content.blob();
+      if (request.signal.aborted) return;
+      var instance = await Nostalgist.launch({
+        element: canvas, signal: request.signal, respondToGlobalEvents: false,
+        retroarchConfig: core === 'nova64' ? {
+          input_player1_up: 'up', input_player1_down: 'down', input_player1_left: 'left', input_player1_right: 'right',
+          input_player1_b: 'z', input_player1_a: 'x', input_player1_start: 'enter', input_player1_select: 'rshift'
+        } : undefined,
         core: { name: core, js: new URL('Web/' + core + '_libretro.js', location.href).href, wasm: new URL('Web/' + core + '_libretro.wasm', location.href).href },
-        rom: { fileName: game.Id + game.Extension, fileContent: await content.blob() },
+        rom: { fileName: game.Id + game.Extension, fileContent: rom },
         sram: SAVE_FOLDERS[core] ? undefined : sram,
         beforeLaunch: SAVE_FOLDERS[core] && sramBytes ? function (n) {
           var fs = n.getEmscriptenFS(), path = savePath(game);
@@ -288,14 +350,18 @@
           fs.writeFile(path, sramBytes);
         } : undefined,
       });
-      playing = { game: game, name: name, revision: revision, last: sram ? new Uint8Array(await sram.arrayBuffer()) : null, timer: setInterval(function () { flush(false); }, 20000) };
+      if (request.signal.aborted) return;
+      emulator = instance; canvas.focus();
+      $('exit').textContent = NO_SAVES[core] ? 'Back to library' : 'Save and exit';
+      playing = { game: game, name: name, revision: revision, last: sramBytes, timer: NO_SAVES[core] ? null : setInterval(function () { flush(false); }, 20000) };
       window.__browserPlay = { booted: true, revision: revision };
       diag.browser = game.Title + ' on ' + core + ' · booted · server save revision ' + revision;
-      playerStatus((NO_SAVES[core] ? 'Playing. This system has no saves to sync.' : server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.') +
+      playerStatus((NO_SAVES[core] ? 'Playing · Use the arrow keys, Z and X, or the on-screen controls.' : server ? 'Continuing your save (revision ' + revision + ').' : 'Playing. Saves go to your server.') +
         // Opening from a link is not a tap, so iOS keeps audio off until the first touch.
         (fromLink && ios ? ' Tap the screen once to turn on sound.' : ''));
       keepAwake();
     } catch (error) {
+      if (request.signal.aborted) return;
       window.__browserPlay = { error: error.message };
       note('browser play', game.Title + ': ' + error.message);
       diag.browser = game.Title + ' failed to start: ' + error.message;
@@ -303,13 +369,20 @@
     }
   }
   async function exitPlayer() {
-    if (playing) { clearInterval(playing.timer); await flush(false); }
-    if (emulator) { try { emulator.exit({ removeCanvas: false }); } catch (_) {} }
+    var sync = playing && !NO_SAVES[web.Cores[playing.game.Platform]];
+    if (sync) { clearInterval(playing.timer); await flush(false); }
+    if (launchRequest) { launchRequest.abort(); launchRequest = null; }
+    $('screen').replaceChildren();
     if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
     if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
-    emulator = null; playing = null; $('player').hidden = true;
-    try { saved = await api('GET', 'Saves'); } catch (_) {}
-    render();
+    emulator = null; playing = null; $('player').hidden = true; $('browse').inert = false;
+    if (sync) {
+      try { saved = await api('GET', 'Saves'); } catch (_) {}
+      if (!$('player').hidden) return;
+      render();
+    }
+    var trigger = Array.from($('games').querySelectorAll('button')).find(function (b) { return opener && b.getAttribute('aria-label') === opener.getAttribute('aria-label'); });
+    (trigger || $('search')).focus();
   }
   $('exit').addEventListener('click', async function () { this.disabled = true; playerStatus('Saving…'); try { await exitPlayer(); } finally { this.disabled = false; } });
   // iPhone Safari has no element fullscreen; show the button only where it works.
@@ -346,21 +419,19 @@
 
   async function start() {
     auth = session();
-    if (!auth) { setup(['Sign in to Jellyfin in this browser first, then reload this page.']); return; }
+    if (!auth) { setup(['Sign in from Jellyfin home with Remember me selected, then open Retro Games from the menu.']); return; }
     try {
       try { diag.version = (await api('GET', 'Info')).Version; } catch (_) {}
-      devices = await api('GET', 'Devices');
-      // Browsing works without a device; only Play needs one.
-      if (!devices.length) {
-        $('device').closest('label').hidden = true;
-        setup([android ? 'Pair a device first. Install the RetroBridge Android app and pair this phone, or on a computer install the companion and run:' : ios ? 'Pair a computer first. On the computer you want to play on, install the RetroBridge companion and run:' : 'Pair this computer first. Install the RetroBridge companion and run:', ['', 'RetroBridge.Launcher pair ' + location.origin + location.pathname.replace(/RetroBridge\/Play$/, '')],
-          'Then enter the code shown under your Jellyfin profile → Quick Connect, and reload this page.']);
-      }
+      try { devices = await api('GET', 'Devices'); } catch (error) { note('devices', error.message); }
+      $('device').closest('label').hidden = !devices.length;
       // Listening devices first: they work from any browser.
       devices.sort(function (a, b) { return b.Listening - a.Listening; }).forEach(function (d) {
         var o = document.createElement('option'); o.value = d.Id; o.textContent = d.Name + (d.Listening ? ' (ready)' : ''); $('device').append(o);
       });
       games = await api('GET', 'Games');
+      Array.from(new Set(games.map(function (g) { return g.Platform; }))).sort().forEach(function (id) {
+        var option = document.createElement('option'); option.value = id; option.textContent = PLATFORMS[id] || id; $('platform').append(option);
+      });
       // Save status and browser play are optional; older servers or errors just hide them.
       try { saved = await api('GET', 'Saves'); } catch (_) { saved = {}; }
       try { web = await api('GET', 'Web/Config'); } catch (_) {}
@@ -403,6 +474,7 @@
   });
   $('search').addEventListener('input', render);
   $('platform').addEventListener('change', render);
+  $('device').addEventListener('change', render);
   start();
 }());
 </script>

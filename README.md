@@ -1,10 +1,22 @@
 # RetroBridge
 
-An early Jellyfin plugin and native RetroArch companion prototype, based on the [development plan](jellyfin-retroarch-plugin-plan.md).
+RetroBridge adds a playable game library to Jellyfin Web. This build targets Jellyfin 12.4.0 and .NET SDK 10.0.401.
 
-**Target: Jellyfin 12.4.0, .NET SDK 10.0.401. This is not a release-ready plugin.**
+## Play an included game
 
-The plugin provides an administrator dashboard for configuring game folders, scanning, searching, and filtering NES (`.nes`), SNES (`.sfc`, `.smc`), Nintendo 64 (`.z64`, `.n64`, `.v64`), Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), Genesis / Mega Drive (`.md`, `.gen`, `.smd`), PlayStation (`.chd`, `.pbp`), and Nova64 (`.nova`) content. Each game must be a single file: PlayStation `.cue`/`.bin` sets are not supported (convert them to CHD), and `.bin` is not used for Genesis because PlayStation shares it. Its authenticated API supplies games to a command-line companion, which verifies downloads, caches content, starts a locally selected RetroArch/core, and separates save directories by server, user, platform, and content checksum.
+1. Sign in to Jellyfin Web. Open the navigation menu and choose **Retro Games**.
+2. Choose a game from **Included games** and press **Play**. All eight Nova64 games and their browser emulator ship in the plugin. A new player can start here immediately.
+3. Use the on-screen controls or the keyboard. The arrow keys move, Z and X are action buttons, and Enter is Start. Select **Back to library** to choose another game.
+
+![RetroBridge library showing the eight included Nova64 games with gameplay previews and Play buttons](docs/screenshots/library.png)
+
+![A Nova64 game running inside RetroBridge with its on-screen controls and Back to library button](docs/screenshots/gameplay.png)
+
+Administrators can also open **Dashboard → Plugins → RetroBridge → Open game library**. The **Copy player link** button provides a bookmark for the same library at `/RetroBridge/Play` under your server's base URL.
+
+## Add your own games
+
+Administrators can add game folders for NES, SNES, Nintendo 64, Game Boy, Game Boy Color, Game Boy Advance, Genesis / Mega Drive, PlayStation and Nova64. Select the players who may access those folders, save, then scan. Their games appear under **Added games** alongside the included library. Supported single-file formats are NES (`.nes`), SNES (`.sfc`, `.smc`), Nintendo 64 (`.z64`, `.n64`, `.v64`), Game Boy (`.gb`), Game Boy Color (`.gbc`), Game Boy Advance (`.gba`), Genesis (`.md`, `.gen`, `.smd`), PlayStation (`.chd`, `.pbp`) and Nova64 (`.nova`). Convert PlayStation cue/bin sets to CHD first.
 
 ## Build and test
 
@@ -19,11 +31,13 @@ python3 scripts/launcher-smoke.py  # macOS/Linux, process substitute
 python3 scripts/package-plugin.py
 ```
 
-The archive is written to `artifacts/RetroBridge-0.1.0.zip`. CI runs .NET tests/builds on macOS, Windows, and Linux; the process-substitute smoke test currently runs on macOS/Linux.
+The archive is written to `artifacts/RetroBridge-<version>.zip`. CI runs .NET tests/builds on macOS, Windows, and Linux; the process-substitute smoke test currently runs on macOS/Linux.
 
 ## Install the plugin
 
-**From Jellyfin's catalog (recommended):** Dashboard → Plugins → Repositories → **+**, and add:
+**To try the changes on main**, use the plugin ZIP from a successful **Build and test** run on main or build it locally, then follow the manual steps below. The Jellyfin catalog serves tagged releases.
+
+**From Jellyfin's catalog:** Dashboard → Plugins → Repositories → **+**, and add:
 
 ```
 https://github.com/seacloud9/jellyfin-retroarch-plugin/releases/latest/download/manifest.json
@@ -36,11 +50,11 @@ Install **RetroBridge** from the catalog, restart Jellyfin, and open Dashboard �
 1. Use a **test Jellyfin 12.4.0 server**. Loading is verified in Docker (see the [verification record](docs/verification.md)); this is still a prototype.
 2. Stop Jellyfin. Create a `RetroBridge` directory under its configured plugins directory.
 3. Extract **both DLLs** from the archive into that directory, then restart Jellyfin.
-4. As an administrator, open Dashboard → Plugins → RetroBridge.
-5. Enter absolute game-folder paths **as seen by the Jellyfin server**. Tick the non-administrator users who may play, save, then scan. Container paths must refer to mounted folders.
+4. Open the Jellyfin Web menu → **Retro Games** to play the included library.
+5. Optional: To add your own games, open Dashboard → Plugins → RetroBridge and enter absolute game-folder paths **as seen by the Jellyfin server**. Tick the non-administrator users who may play, save, then scan. Container paths must refer to mounted folders.
 6. Search and filter games. Titles are cleaned from file names (`Super_Mario_Bros_(USA)_[!]` becomes *Super Mario Bros*, region *USA*). **Edit title** overrides a title for everyone; leave it empty to restore the file-name title. Use only games you own or redistributable homebrew.
 
-Scanning requires Jellyfin's `RequiresElevation` policy. Listing, launch tickets, and downloads require an administrator or a selected player. Every selected player sees the whole library unless a game is limited: **Access** on a game restricts it to chosen players. Restricted games behave as missing for everyone else (listing, tickets, downloads, artwork, and queued remote launches). Removing a player or restricting a game takes effect immediately, including for tickets already issued. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
+Scanning requires Jellyfin's `RequiresElevation` policy. Every signed-in player can access the included games. Additional folders require an administrator or a selected player. **Access** on a game restricts it to chosen players. Restricted games behave as missing for everyone else (listing, tickets, downloads, artwork, and queued remote launches). Removing folder access or restricting a game takes effect immediately, including for tickets already issued. Game directories must be administrator-controlled and readable by the server. Symbolic links inside roots are rejected. Do not use directories writable by untrusted users: path checks do not provide race-free protection against concurrent filesystem replacement.
 
 Scans hash only new or changed files, identified by size and modification time; **Full rescan** (`POST /RetroBridge/Scan?full=true`) rehashes everything. A new catalog is published only after an error-free scan. Duplicate content on the same platform produces one entry. A failed/cancelled scan keeps the previous catalog. Each published catalog is saved to `<Jellyfin data>/retrobridge/catalog.json` and restored at startup, so restarts need no rescan. Scans run in the background. The dashboard shows progress, and a daily 03:00 scan is scheduled as **Scan RetroBridge game library** under Dashboard → Scheduled Tasks, where you can change triggers and see history. A scan with issues shows as failed there and keeps the previous catalog.
 
@@ -50,7 +64,7 @@ Download the archive for your computer from the [latest release](https://github.
 
 macOS builds are not signed or notarized. If macOS blocks the first run, use `xattr -d com.apple.quarantine RetroBridge.Launcher`. Windows SmartScreen may also warn about an unsigned executable. Keep the executable where you extracted it before running `register` or `autostart on`, because they record its path.
 
-## Play (one click)
+## Play on a paired device
 
 Install RetroArch and the cores you need separately. On each player's computer, run these once. `dotnet run --project src/RetroBridge.Launcher -c Release --` works in place of `RetroBridge.Launcher`:
 
@@ -67,15 +81,13 @@ RetroBridge.Launcher register
 
 Data defaults to `~/Library/Application Support/RetroBridge`, `~/.local/share/RetroBridge`, or `%LOCALAPPDATA%\RetroBridge`. Pass `--data <dir>` to any command to change it.
 
-**Play from a phone or any browser:** run `RetroBridge.Launcher listen` on the computer, or leave it running. While it runs, that device shows as *(ready)* on the Play page, and Play sends the game straight to it. This works from iPhone, Android, or another computer. The listener checks in every 3 seconds and launches one game at a time. Unpairing the device or removing the player stops it. **`RetroBridge.Launcher autostart on`** starts it at every login, for the current user only: a LaunchAgent on macOS, a systemd user service on Linux (XDG autostart where systemd isn't available), or the `HKCU` Run key on Windows, using a headless console. `autostart off` and `autostart status` turn it off and check it. Background listeners log to `listener.log` in the data directory. Only one listener runs per data directory, and it waits for the network at login.
+**Play from a phone or any browser:** run `RetroBridge.Launcher listen` on the computer, or leave it running. While it runs, that device shows as *(ready)* on the library page, and **Play on** sends the game straight to it. This works from iPhone, Android, or another computer. The listener checks in every 3 seconds and launches one game at a time. Unpairing the device or removing the player stops it. **`RetroBridge.Launcher autostart on`** starts it at every login, for the current user only: a LaunchAgent on macOS, a systemd user service on Linux (XDG autostart where systemd isn't available), or the `HKCU` Run key on Windows, using a headless console. `autostart off` and `autostart status` turn it off and check it. Background listeners log to `listener.log` in the data directory. Only one listener runs per data directory, and it waits for the network at login.
 
-**Built-in games:** every installation includes eight open-source Nova64 demo games (Hello 3D, Demoscene, Space Shooter, Neon Pinball, Neon Snake, Nova Drift, Platformer, Dungeon Crawler). They are listed from the server's first start and play in the browser right away, because the Nova64 core ships inside the plugin. They cannot be turned off: players always have games that work. The game folders you configure add your own games alongside them.
-
-**In-browser play (experimental):** Nova64 always plays in the browser. For other systems, turn on *In-browser play* in the plugin settings, choose platforms, and press **Download emulator files**. The server fetches pinned, checksum-verified files from upstream (Nostalgist, and RetroArch's WebAssembly builds of FCEUmm for NES, mGBA for Game Boy/Color/Advance, ClownMDEmu for Genesis, PCSX ReARMed for PlayStation), about 19 MB, and serves them itself. Game cards then offer **Play in browser**, with on-screen touch controls and keyboard input. On iPhone/iPad, or with no paired device, it is the main button. Battery saves sync through the same server save API, so progress follows you between the browser, the desktop companion, and Android. Saves go up every 20 seconds, when the tab is hidden, and on **Save and exit**. A link ending in `#play=<game id>` opens a game directly. Audio starts after the first tap on iOS. SNES and Nintendo 64 play natively only (no license-compatible browser core). PlayStation in the browser is off by default and limited to discs up to 512 MiB, because the whole disc is held in the page's memory. **Nova64 demos:** eight small open-source Nova64 games are built into the plugin and show up after a scan (native core: `nova64_libretro` from the [Nova64 releases](https://github.com/seacloud9/nova64/releases)). Turn off *Include the built-in Nova64 demo games* to hide them. The files are GPL-3.0 (RetroArch) builds; see [third-party software](docs/third-party.md) for licenses and source.
+**In-browser play for additional systems.** Nova64 is ready on installation. For other supported systems, turn on **In-browser play** in the plugin settings, choose the platforms, and press **Download emulator files**. The server fetches checksum-verified builds of FCEUmm for NES, mGBA for Game Boy/Color/Advance, ClownMDEmu for Genesis and PCSX ReARMed for PlayStation. Their cards then offer **Play** in the browser. Battery saves sync every 20 seconds, when the tab is hidden, and on **Save and exit**. A link ending in `#play=<game id>` opens a game directly. SNES and Nintendo 64 use the native companion. PlayStation browser play is off by default and limited to discs up to 512 MiB. [Emulator licenses and source](docs/third-party.md).
 
 **Box art:** after each scan, the server fetches box art from the libretro thumbnails project (`thumbnails.libretro.com`) and caches it under `<Jellyfin data>/retrobridge/artwork`. Only the server contacts that site; players load images from Jellyfin. Titles are matched by No-Intro file name first, then by cleaned title with region preference. Unmatched games show a platform tile and are retried weekly or with **Fetch missing artwork**. Administrators can **Upload art** (PNG or JPEG, up to 4 MiB) for any game. An upload replaces fetched art and is never overwritten by later fetches; **Remove uploaded art** goes back to the fetched image. Turn this off in the plugin settings to keep the server from contacting the site.
 
-Then open **`https://jellyfin.example/RetroBridge/Play`** in a browser signed in to Jellyfin. Players find the link after `pair`, behind **Open play page** in the Android app, or from an administrator: the plugin page has a **Copy link** button. Administrators also get a **Retro Games** entry in Jellyfin's main menu. Jellyfin 12.x shows plugin menu entries only to administrators, so players need the link. Choose the paired computer and press **Play**. The page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
+To launch on another device, open **Retro Games**, select the paired device and press **Play on** followed by its name. For a local companion the page requests a ticket and opens `retrobridge://launch?ticket=…`. The companion redeems the ticket, verifies and caches the game, and starts RetroArch. Link launches log to `launcher.log` in the data directory.
 
 The link holds only the ticket. Tickets expire after 2 minutes and are consumed by any redemption attempt. Only the same user on the same paired device can redeem a ticket, so a repeated click or a forwarded link does nothing. Tickets live in server memory; a Jellyfin restart invalidates outstanding ones. Simultaneous launches of the same game are refused by a per-game lock.
 
@@ -101,7 +113,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | POST | `/RetroBridge/Games/{id}/LaunchTicket` | Player | Body `{"DeviceId"}`; for a listening device returns `Delivered: true` (no ticket), otherwise a single-use ticket and its expiry |
 | POST | `/RetroBridge/Games/{id}/Title` | Administrator | Body `{"Title"}` (≤ 200 chars); empty restores the file-name title |
 | POST | `/RetroBridge/Games/{id}/Access` | Administrator | Body `{"PlayerUserIds": [...]}` limits the game to those players; empty restores access for all players |
-| GET | `/RetroBridge/Games/{id}/Art` | Player | Cached box art (PNG), 404 if none |
+| GET | `/RetroBridge/Games/{id}/Art` | Player | Uploaded / cached artwork or an embedded gameplay screenshot, 404 if none |
 | PUT / DELETE | `/RetroBridge/Games/{id}/Art` | Administrator | Upload a raw PNG/JPEG body (≤ 4 MiB; 400 wrong type, 413 too large) / remove the upload |
 | POST | `/RetroBridge/Artwork` | Administrator | Fetch missing art now, retrying misses (202; `?wait=true` returns counts); 409 if turned off |
 | GET | `/RetroBridge/Saves` | Player | Latest save per visible game: revision, time, and the saving device's name (or "another device") |
@@ -115,7 +127,7 @@ Use Jellyfin authentication (an `Authorization: MediaBrowser ..., Token="..."` h
 | GET | `/RetroBridge/Play` | Anonymous (static) | Player page; uses the browser's Jellyfin session; strict CSP |
 | POST | `/RetroBridge/LaunchTickets/Claim` | Player, as the device | Check in as listening and receive the oldest pending launch for this device (204 when none) |
 | POST | `/RetroBridge/LaunchTickets/Redeem` | Player, from the bound device | Body `{"Ticket"}`; returns the game; 404 for any invalid, expired, replayed, or foreign ticket |
-| GET | `/RetroBridge/Games/{id}/Content` | Player | Download an indexed file from a currently configured root |
+| GET | `/RetroBridge/Games/{id}/Content` | Player | Download an included cartridge or an indexed file from a currently configured root |
 
 Scan errors include paths for administrator diagnostics. Content changes after scanning are rejected by the companion's checksum check; rescan to update the catalog.
 

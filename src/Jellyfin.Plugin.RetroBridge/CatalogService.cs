@@ -10,6 +10,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost host)
     {
+        services.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, LibraryMenu>();
         // DataPath outlives plugin directory replacement during upgrades.
         services.AddSingleton(provider => new ArtworkService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "artwork")));
         services.AddSingleton(provider =>
@@ -22,7 +23,6 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         });
         services.AddSingleton<LaunchTickets>();
         services.AddSingleton(provider => new BrowserPlayService(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "web")));
-        services.AddSingleton(provider => new DemoLibrary(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "demos")));
         services.AddSingleton(provider => new SaveStore(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "retrobridge", "saves")));
         services.AddSingleton<IPairedDevices, JellyfinPairedDevices>();
         services.AddHostedService<StartupScan>();
@@ -31,13 +31,12 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     }
 }
 
-// Indexes the built-in demos (and any game folders) when the server starts, so players see games right after install
-// without waiting for an administrator or the nightly scan. Unchanged files are not rehashed.
-public sealed class StartupScan(CatalogService catalog, DemoLibrary demos) : Microsoft.Extensions.Hosting.IHostedService
+// Refresh configured folders at startup. The embedded library is available independently of scans.
+public sealed class StartupScan(CatalogService catalog) : Microsoft.Extensions.Hosting.IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (Plugin.Instance?.Configuration is { } configuration) catalog.TryStartBackground(demos.Roots(configuration), false);
+        if (Plugin.Instance?.Configuration.GameRoots is { Length: > 0 } roots) catalog.TryStartBackground(roots, false);
         return Task.CompletedTask;
     }
 
@@ -60,7 +59,9 @@ public sealed class CatalogService
     public CatalogService(string? snapshotPath = null)
     {
         _snapshotPath = snapshotPath;
-        _games = snapshotPath is null ? [] : CatalogSnapshot.Load(snapshotPath);
+        // Older snapshots included copies extracted under retrobridge/demos.
+        _games = snapshotPath is null ? [] : CatalogSnapshot.Load(snapshotPath)
+            .Where(x => x.Root != Path.Combine(Path.GetDirectoryName(Path.GetFullPath(snapshotPath))!, "demos")).ToArray();
     }
 
     public IReadOnlyList<IndexedGame> Games => Volatile.Read(ref _games);

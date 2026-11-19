@@ -2,5 +2,8 @@
   "name": "retrobridge-browser-tests",
   "private": true,
   "description": "Drives the RetroBridge play page against a real Jellyfin server.",
-  "devDependencies": { "jsdom": "25.0.1" }
+  "devDependencies": {
+    "jsdom": "25.0.1",
+    "playwright": "1.59.1"
+  }
 }

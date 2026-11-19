@@ -28,7 +28,6 @@ public sealed class ApiTests : IDisposable
     private int _saves;
     private readonly BrowserPlayService _browser = new(Path.Combine(Path.GetTempPath(), "retrobridge-web-" + Guid.NewGuid().ToString("N")), new BrowserPlayTests.FakeUpstream(), BrowserPlayTests.TestAssets, BrowserPlayTests.TestCores);
     private readonly ArtworkService _artwork = new(Path.Combine(Path.GetTempPath(), "retrobridge-art-" + Guid.NewGuid().ToString("N")));
-    private readonly DemoLibrary _demos = new(Path.Combine(Path.GetTempPath(), "retrobridge-demos-" + Guid.NewGuid().ToString("N")));
     private static readonly Guid Player = Guid.NewGuid();
     public ApiTests()
     {
@@ -39,7 +38,6 @@ public sealed class ApiTests : IDisposable
             services.AddSingleton<IPairedDevices>(new TestDevices());
             services.AddSingleton(_artwork);
             services.AddSingleton(_browser);
-            services.AddSingleton(_demos);
             services.AddSingleton(new SaveStore(Path.Combine(Path.GetTempPath(), "retrobridge-saves-" + Guid.NewGuid().ToString("N"))));
             services.AddSingleton<Func<PluginConfiguration>>(() => _configuration);
             services.AddSingleton<Action<PluginConfiguration>>(_ => _saves++);
@@ -68,7 +66,7 @@ public sealed class ApiTests : IDisposable
     [InlineData("GET", "/RetroBridge/Games")]
     [InlineData("GET", "/RetroBridge/Games/unknown/Content")]
     [InlineData("POST", "/RetroBridge/Scan")]
-    public async Task RegularUsersAreRejected(string method, string path)
+    public async Task RequestsWithoutAUserIdentityCannotAccessGames(string method, string path)
     {
         _client.DefaultRequestHeaders.Add("Test-Role", "User");
         using var response = await _client.SendAsync(new(new HttpMethod(method), path));
@@ -116,16 +114,18 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
-    public async Task OnlyAllowedPlayersCanListAndDownload()
+    public async Task OnlySelectedPlayersCanListAndDownloadAddedGames()
     {
         var (root, game) = await ScanFixture();
         try
         {
-            using (var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games", "User", Player, "d")))
-                Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var starter = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games", "User", Player, "d")))
+                Assert.All((await starter.Content.ReadFromJsonAsync<Game[]>())!, g => Assert.True(g.IsBundled));
+            using (var hidden = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Content", "User", Player, "d")))
+                Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
             _configuration.PlayerUserIds = [Player.ToString("N")];
             using (var listed = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games", "User", Player, "d")))
-                Assert.Equal(game.Id, Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).Id);
+                Assert.Equal(game.Id, Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!, g => !g.IsBundled).Id);
             using (var content = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Content", "User", Player, "d")))
                 Assert.Equal("fixture a", await content.Content.ReadAsStringAsync());
             using (var scan = await _client.SendAsync(As(HttpMethod.Post, "/RetroBridge/Scan", "User", Player, "d")))
@@ -169,7 +169,7 @@ public sealed class ApiTests : IDisposable
             Assert.Equal(HttpStatusCode.NotFound, unknownGame.StatusCode);
             _configuration.PlayerUserIds = [];
             using var revoked = await _client.SendAsync(As(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/LaunchTicket", "User", Player, "browser", new { DeviceId = "companion" }));
-            Assert.Equal(HttpStatusCode.Forbidden, revoked.StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, revoked.StatusCode);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -183,8 +183,8 @@ public sealed class ApiTests : IDisposable
         Assert.Contains("retrobridge-mine", json);
         Assert.DoesNotContain("retrobridge-theirs", json);
         Assert.DoesNotContain("Token", json);
-        using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Devices", "User", Guid.NewGuid(), "browser"));
-        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var other = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Devices", "User", Guid.NewGuid(), "browser"));
+        Assert.DoesNotContain("retrobridge-mine", await other.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -251,7 +251,7 @@ public sealed class ApiTests : IDisposable
             } while ((status.GetProperty("running").GetBoolean() || status.GetProperty("last").ValueKind == System.Text.Json.JsonValueKind.Null) && DateTime.UtcNow < deadline);
             Assert.False(status.GetProperty("running").GetBoolean());
             Assert.Equal(1, status.GetProperty("last").GetProperty("reused").GetInt32());
-            Assert.Equal(game.Id, Assert.Single(_catalog.Games, x => x.Game.Platform != "nova64").Game.Id); // plus the built-in demos
+            Assert.Equal(game.Id, Assert.Single(_catalog.Games).Game.Id);
             using var denied = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Scan", "User", Player, "d"));
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
@@ -272,7 +272,7 @@ public sealed class ApiTests : IDisposable
             using (var renamed = await Rename("Administrator", new { Title = "  Alpha Quest  " })) Assert.Equal("Alpha Quest", (await renamed.Content.ReadFromJsonAsync<Game>())!.Title);
             Assert.Equal(1, _saves);
             using (var listed = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games?search=quest", "User", Player, "d")))
-                Assert.Equal("Alpha Quest", Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).Title);
+                Assert.Equal("Alpha Quest", Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!, g => !g.IsBundled).Title);
             using (var reset = await Rename("Administrator", new { Title = " " })) Assert.Equal("Alpha", (await reset.Content.ReadFromJsonAsync<Game>())!.Title);
             Assert.Empty(_configuration.TitleOverrides);
         }
@@ -296,8 +296,8 @@ public sealed class ApiTests : IDisposable
                 Assert.Equal(4, (await art.Content.ReadAsByteArrayAsync()).Length);
             }
             using (var listed = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games", "User", Player, "d")))
-                Assert.True(Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!).HasArt);
-            using (var denied = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Guid.NewGuid(), "d"))) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+                Assert.True(Assert.Single((await listed.Content.ReadFromJsonAsync<Game[]>())!, g => !g.IsBundled).HasArt);
+            using (var denied = await _client.SendAsync(As(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", "User", Guid.NewGuid(), "d"))) Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
             using (var traversal = await _client.SendAsync(As(HttpMethod.Get, "/RetroBridge/Games/..%2F..%2Fsecret/Art", "User", Player, "d"))) Assert.Equal(HttpStatusCode.NotFound, traversal.StatusCode);
         }
         finally { Directory.Delete(root, true); }
@@ -326,20 +326,20 @@ public sealed class ApiTests : IDisposable
             Assert.Equal(HttpStatusCode.BadRequest, await Status(Req(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/Access", Player, new { PlayerUserIds = new[] { "not-a-guid" } }, "Administrator")));
             Assert.Equal(HttpStatusCode.OK, await Status(Req(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/Access", Player, new { PlayerUserIds = new[] { Player.ToString() } }, "Administrator")));
 
-            using (var hidden = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games", other))) Assert.Empty((await hidden.Content.ReadFromJsonAsync<Game[]>())!);
+            using (var hidden = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games?platform=nes", other))) Assert.Empty((await hidden.Content.ReadFromJsonAsync<Game[]>())!);
             Assert.Equal(HttpStatusCode.NotFound, await Status(Req(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Content", other)));
             Assert.Equal(HttpStatusCode.NotFound, await Status(Req(HttpMethod.Get, $"/RetroBridge/Games/{game.Id}/Art", other)));
             Assert.Equal(HttpStatusCode.NotFound, await Status(Req(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/LaunchTicket", other, new { DeviceId = "retrobridge-mine" })));
             // A ticket issued before the restriction must not still work.
             Assert.Equal(HttpStatusCode.NotFound, await Status(Req(HttpMethod.Post, "/RetroBridge/LaunchTickets/Redeem", other, new { Ticket = early })));
 
-            using (var visible = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games", Player))) Assert.Single((await visible.Content.ReadFromJsonAsync<Game[]>())!);
+            using (var visible = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games?platform=nes", Player))) Assert.Single((await visible.Content.ReadFromJsonAsync<Game[]>())!);
             Assert.Equal(HttpStatusCode.OK, await Status(Req(HttpMethod.Post, "/RetroBridge/LaunchTickets/Redeem", Player, new { Ticket = await Ticket(Player) })));
-            using (var admin = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games", Guid.NewGuid(), role: "Administrator"))) Assert.Single((await admin.Content.ReadFromJsonAsync<Game[]>())!);
+            using (var admin = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games?platform=nes", Guid.NewGuid(), role: "Administrator"))) Assert.Single((await admin.Content.ReadFromJsonAsync<Game[]>())!);
 
             Assert.Equal(HttpStatusCode.OK, await Status(Req(HttpMethod.Post, $"/RetroBridge/Games/{game.Id}/Access", Player, new { PlayerUserIds = Array.Empty<string>() }, "Administrator")));
             Assert.Empty(_configuration.RestrictedGames);
-            using (var restored = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games", other))) Assert.Single((await restored.Content.ReadFromJsonAsync<Game[]>())!);
+            using (var restored = await _client.SendAsync(Req(HttpMethod.Get, "/RetroBridge/Games?platform=nes", other))) Assert.Single((await restored.Content.ReadFromJsonAsync<Game[]>())!);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -513,19 +513,25 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
-    public async Task BuiltInDemosAreAlwaysScannedAndServed()
+    public async Task FreshPlayerCanBrowseAndPlayEmbeddedGamesWithoutAScan()
     {
-        _client.DefaultRequestHeaders.Add("Test-Role", "Administrator");
-        (await _client.PostAsync("/RetroBridge/Scan?wait=true", null)).EnsureSuccessStatusCode();
-        var games = (await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games?platform=nova64"))!;
-        Assert.Equal(DemoLibrary.Names.Count, games.Length);
+        _client.DefaultRequestHeaders.Add("Test-Role", "User");
+        _client.DefaultRequestHeaders.Add("Test-User", Player.ToString());
+        var games = (await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games"))!;
+        Assert.Equal(8, games.Length);
+        Assert.All(games, g => Assert.True(g.IsBundled && g.HasArt));
         var hello = Assert.Single(games, x => x.Title == "Hello 3D");
-        Assert.Equal(".nova", hello.Extension);
         var bytes = await _client.GetByteArrayAsync($"/RetroBridge/Games/{hello.Id}/Content");
-        Assert.Equal("PK"u8.ToArray(), bytes[..2]); // a zip cart
+        Assert.Equal("PK"u8.ToArray(), bytes[..2]);
+        using var art = await _client.GetAsync($"/RetroBridge/Games/{hello.Id}/Art");
+        Assert.Equal("image/png", art.Content.Headers.ContentType!.MediaType);
+        _configuration.RestrictedGames = [new GameAccess { GameId = hello.Id, PlayerUserIds = [Guid.NewGuid().ToString()] }];
+        Assert.DoesNotContain((await _client.GetFromJsonAsync<Game[]>("/RetroBridge/Games"))!, x => x.Id == hello.Id);
+        using var hidden = await _client.GetAsync($"/RetroBridge/Games/{hello.Id}/Art");
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
     }
 
-    public void Dispose() { _client.Dispose(); _host.Dispose(); if (Directory.Exists(_demos.Directory)) Directory.Delete(_demos.Directory, true); }
+    public void Dispose() { _client.Dispose(); _host.Dispose(); }
 }
 
 internal sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

@@ -1,44 +1,31 @@
+using System.Security.Cryptography;
 using Jellyfin.Plugin.RetroBridge;
-using RetroBridge.Domain;
 
 namespace RetroBridge.Tests;
 
-public sealed class DemoLibraryTests : IDisposable
+public sealed class DemoLibraryTests
 {
-    private readonly DemoLibrary _demos = new(Path.Combine(Path.GetTempPath(), "retrobridge-demos-" + Guid.NewGuid().ToString("N")));
-
     [Fact]
-    public void ShipsNovaCartsWithReadableTitles()
+    public void ShipsEightIdentifiableCartsWithScreenshots()
     {
-        Assert.Equal(8, DemoLibrary.Names.Count);
-        Assert.Contains("Hello 3D.nova", DemoLibrary.Names);
-        Assert.All(DemoLibrary.Names, x => Assert.Equal("nova64", Platforms.FromExtension(Path.GetExtension(x))));
+        Assert.Equal(8, DemoLibrary.Games.Count);
+        Assert.Contains(DemoLibrary.Games, x => x.Game.Title == "Hello 3D");
+        foreach (var item in DemoLibrary.Games)
+        {
+            Assert.True(item.Game.IsBundled);
+            using var cart = DemoLibrary.OpenCart(item);
+            Assert.Equal("nova64-" + Convert.ToHexStringLower(SHA256.HashData(cart)), item.Game.Id);
+            using var screenshot = DemoLibrary.OpenScreenshot(item);
+            var signature = new byte[8];
+            screenshot.ReadExactly(signature);
+            Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, signature);
+        }
     }
 
-    [Fact]
-    public void InstallWritesCartsKeepsUnchangedFilesAndRemovesStaleOnes()
-    {
-        _demos.Install();
-        var hello = Path.Combine(_demos.Directory, "Hello 3D.nova");
-        var written = File.GetLastWriteTimeUtc(hello);
-        File.WriteAllText(Path.Combine(_demos.Directory, "Removed Demo.nova"), "old");
-        File.WriteAllText(Path.Combine(_demos.Directory, "Demoscene.nova"), "tampered");
-        _demos.Install();
-        Assert.Equal(DemoLibrary.Names, Directory.GetFiles(_demos.Directory).Select(x => Path.GetFileName(x)!).Order(StringComparer.Ordinal).ToArray());
-        Assert.Equal(written, File.GetLastWriteTimeUtc(hello));
-        Assert.NotEqual("tampered", File.ReadAllText(Path.Combine(_demos.Directory, "Demoscene.nova")));
-    }
-
-    [Fact]
-    public void DemosAreAlwaysScannedAlongsideGameFolders()
-    {
-        Assert.Equal([_demos.Directory], _demos.Roots(new PluginConfiguration()));
-        var configuration = new PluginConfiguration { GameRoots = ["/games"] };
-        Assert.Equal(["/games", _demos.Directory], _demos.Roots(configuration));
-        Assert.True(_demos.Allows(configuration, _demos.Directory));
-        Assert.True(_demos.Allows(configuration, Path.GetFullPath("/games")));
-        Assert.False(_demos.Allows(configuration, Path.GetFullPath("/elsewhere")));
-    }
-
-    public void Dispose() { if (Directory.Exists(_demos.Directory)) Directory.Delete(_demos.Directory, true); }
+    [Theory]
+    [InlineData("retrobridge-web", false)]
+    [InlineData("retrobridge-launcher", false)]
+    [InlineData("retrobridge-0123456789abcdef0123456789abcdef", true)]
+    public void RecognizesPairedCompanions(string id, bool expected) =>
+        Assert.Equal(expected, JellyfinPairedDevices.IsCompanionId(id));
 }

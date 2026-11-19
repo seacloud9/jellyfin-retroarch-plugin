@@ -334,8 +334,8 @@ def verify_pairing(server, admin, ordinary, user_id, game, config, config_path, 
 
         config['PlayerUserIds'] = []
         server.request('POST', config_path, config, admin)
-        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(403,))
-        server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(403,))
+        server.request('POST', '/RetroBridge/Games/' + game['Id'] + '/LaunchTicket', {'DeviceId': device}, ordinary, expected=(404,))
+        server.request('GET', '/RetroBridge/Games/' + game['Id'] + '/Content', token=stored['Token'], expected=(404,))
     summary['pairing_and_tickets'] = True
 
 
@@ -374,7 +374,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     server.request('POST', config_path, config, admin)
     scan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     # The fixture game plus the eight built-in demos.
-    if not scan['Published'] or scan['Count'] != 9:
+    if not scan['Published'] or scan['Count'] != 1:
         raise AssertionError('Fixture scan failed')
     games = server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin)
     if len(games) != 1:
@@ -400,10 +400,10 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     rescan = server.request('POST', '/RetroBridge/Scan?wait=true', token=admin)
     if server.request('GET', '/RetroBridge/Games?search=save-counter&platform=nes', token=admin) != games:
         raise AssertionError('Rescan changed identity or duplicated content')
-    if (rescan['Hashed'], rescan['Reused']) != (0, 9):
+    if (rescan['Hashed'], rescan['Reused']) != (0, 1):
         raise AssertionError(f'Unchanged rescan should reuse the hash: {rescan}')
     full = server.request('POST', '/RetroBridge/Scan?full=true&wait=true', token=admin)
-    if (full['Hashed'], full['Reused']) != (9, 0):
+    if (full['Hashed'], full['Reused']) != (1, 0):
         raise AssertionError(f'Full rescan should rehash: {full}')
     summary['incremental_scan'] = True
 
@@ -416,7 +416,7 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
             raise AssertionError(f'Background scan did not finish: {status}')
         time.sleep(0.5)
         status = server.request('GET', '/RetroBridge/Scan', token=admin)
-    if not status['Last']['Published'] or status['Last']['Count'] != 9:
+    if not status['Last']['Published'] or status['Last']['Count'] != 1:
         raise AssertionError(f'Background scan result: {status}')
     server.request('GET', '/RetroBridge/Scan', expected=(401,))
     summary['background_scan'] = True
@@ -446,17 +446,17 @@ def verify_server(server, container, fixtures, summary, os_handler=False):
     ordinary = server.login('retrobridge-user', password)
     for method, endpoint in [('GET', '/RetroBridge/Games'), ('POST', '/RetroBridge/Scan'), ('GET', route)]:
         server.request(method, endpoint, expected=(401,))
-        server.request(method, endpoint, token=ordinary, expected=(403,))
+    starter = server.request('GET', '/RetroBridge/Games', token=ordinary)
+    if len(starter) != 8 or not all(g['IsBundled'] for g in starter):
+        raise AssertionError('An unconfigured player should see exactly the starter library')
+    server.request('POST', '/RetroBridge/Scan', token=ordinary, expected=(403,))
+    server.request('GET', route, token=ordinary, expected=(404,))
     summary['real_authentication_boundaries'] = True
 
-    # jellyfin-web builds its main menu from this list. Jellyfin 12.4 serves it to administrators only.
-    server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=ordinary, expected=(403,))
-    menu = server.request('GET', '/web/ConfigurationPages?enableInMainMenu=true', token=admin)
-    entry = next((p for p in menu if p.get('Name') == 'RetroBridgePlay'), None)
-    if not entry or entry.get('DisplayName') != 'Retro Games' or entry.get('MenuIcon') != 'sports_esports':
-        raise AssertionError(f'Main-menu entry missing: {menu}')
-    if b'RetroBridge/Play' not in server.request('GET', '/web/ConfigurationPage?name=RetroBridgePlay', token=admin, raw=True):
-        raise AssertionError('Main-menu page is not served to players')
+    # The shared Jellyfin Web menu includes ordinary players and works with a read-only web directory.
+    links = server.request('GET', '/web/config.json')['menuLinks']
+    if not any(link.get('name') == 'Retro Games' and link.get('url') == '../RetroBridge/Play' for link in links):
+        raise AssertionError('Game library missing from Jellyfin Web navigation')
     summary['jellyfin_main_menu_entry'] = True
     verify_pairing(server, admin, ordinary, user['Id'], game, config, config_path, summary, os_handler)
 

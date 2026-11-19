@@ -3,12 +3,17 @@
 <div id="RetroBridgePage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-textarea,emby-select">
   <div data-role="content"><div class="content-primary">
     <h1>RetroBridge</h1>
-    <p>Prototype · NES, SNES, Nintendo 64, Game Boy / Color / Advance, Genesis / Mega Drive, PlayStation, Nova64 · Native RetroArch</p>
+    <h2>Game library</h2>
+    <p>Every signed-in player starts with eight Nova64 games. Open the library, choose a game and press Play.</p>
+    <p><a id="PlayLink" href="#" class="raised button-submit emby-button">Open game library</a>
+    <button is="emby-button" id="CopyPlayUrl" type="button" class="raised">Copy player link</button></p>
+    <p>Players can open Retro Games from the Jellyfin Web menu or bookmark <code id="PlayUrl"></code>.</p>
+    <h2>Additional games</h2>
     <form id="RetroBridgeForm">
       <div class="inputContainer"><label class="inputLabel" for="GameRoots">Game folders (one absolute server path per line)</label><textarea is="emby-textarea" id="GameRoots" rows="5"></textarea></div>
-      <fieldset><legend>Players (administrators always have access)</legend><div id="PlayerList"></div></fieldset>
+      <fieldset><legend>Players who can access additional games</legend><div id="PlayerList"></div></fieldset>
       <label><input type="checkbox" id="FetchArtwork" /> Fetch box art from thumbnails.libretro.com after scans (only this server contacts it)</label>
-      <p>Eight open-source Nova64 demo games are built in and always listed, so every player has games that work right away. They play in the browser with no setup. The game folders above add your own games.</p>
+
       <fieldset><legend>In-browser play (experimental)</legend>
         <label><input type="checkbox" id="BrowserPlay" /> Let players run games from the systems below in their browser (needed on iPhone/iPad). Nova64 always plays in the browser.</label><br />
         <label><input type="checkbox" class="BrowserPlatform" value="nes" /> NES (FCEUmm)</label>
@@ -28,11 +33,9 @@
     <button is="emby-button" id="FetchArt" type="button" class="raised">Fetch missing artwork</button></p>
     <p>Scans re-hash only new or changed files and run in the background. A daily scan is scheduled under Dashboard → Scheduled Tasks. Use a full rescan if files were replaced without changing their size and timestamp.</p>
     <p id="ScanStatus" role="status" aria-live="polite"></p>
-    <h2>Game library</h2>
+    <h2>Manage games</h2>
     <label for="GameSearch">Search games</label><input is="emby-input" id="GameSearch" type="search" />
     <label for="GamePlatform">Platform</label><select is="emby-select" id="GamePlatform"><option value="">All platforms</option><option value="nes">NES</option><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option><option value="gba">Game Boy Advance</option><option value="snes">SNES</option><option value="n64">Nintendo 64</option><option value="genesis">Genesis / Mega Drive</option><option value="psx">PlayStation</option><option value="nova64">Nova64</option></select>
-    <p>Share the play page with players (it also appears in the companion after pairing). Jellyfin's main menu shows plugin pages to administrators only.</p>
-    <p><code id="PlayUrl"></code> <button is="emby-button" id="CopyPlayUrl" type="button" class="raised">Copy link</button> <a id="PlayLink" href="#" target="_blank" rel="noopener">Open</a></p>
     <ul id="GameList"></ul>
   </div></div>
   <script type="text/javascript">
@@ -62,9 +65,14 @@
         file.addEventListener('change', function () { if (file.files[0]) uploadArt(g, file.files[0]); });
         var removeArt = document.createElement('button'); removeArt.type = 'button'; removeArt.className = 'raised'; removeArt.setAttribute('is', 'emby-button'); removeArt.textContent = 'Remove uploaded art';
         removeArt.addEventListener('click', function () { artRequest(g, 'DELETE', null, 'Uploaded art removed.', 'This game has no uploaded art.'); });
-        li.append(title, code, edit, access, upload, file, removeArt); list.append(li);
+        li.append(title);
+        if (g.IsBundled) {
+          var play = document.createElement('a'); play.textContent = 'Play ' + g.Title;
+          play.href = playUrl + '#play=' + encodeURIComponent(g.Id); li.append(play);
+        }
+        li.append(code, edit, access, upload, file, removeArt); list.append(li);
       });
-      if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = 'No games found. Save folders and scan to populate the library.'; list.append(empty); }
+      if (!list.children.length) { var empty = document.createElement('li'); empty.textContent = 'No games match these filters.'; list.append(empty); }
     }
     // Uploads send raw bytes, so use fetch with the session token instead of ApiClient.ajax.
     async function artRequest(game, method, body, done, failed) {
@@ -86,7 +94,7 @@
       var box = document.createElement('fieldset');
       var legend = document.createElement('legend'); legend.textContent = 'Limit ' + game.Title + ' to (none ticked = all players):'; box.append(legend);
       var chosen = limited ? limited.PlayerUserIds : [];
-      users.filter(function (u) { return (config.PlayerUserIds || []).includes(u.Id); }).forEach(function (u) {
+      users.filter(function (u) { return !u.Policy.IsAdministrator && (game.IsBundled || (config.PlayerUserIds || []).includes(u.Id)); }).forEach(function (u) {
         var label = document.createElement('label'), input = document.createElement('input');
         input.type = 'checkbox'; input.value = u.Id; input.checked = chosen.includes(u.Id);
         label.append(input, ' ' + u.Name); box.append(label, document.createElement('br'));
